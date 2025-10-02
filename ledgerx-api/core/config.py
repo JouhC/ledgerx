@@ -1,11 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    SALT: str
-    DEFAULT_PLAYER: str | None = None
-    DB_FILE: str
-    RENDER: bool = False
-    ERROR_CODES_FILE: str = "app/error_codes.json"
+    API_PREFIX: str = "/api/v1"
 
     class Config:
         env_file = ".env"
