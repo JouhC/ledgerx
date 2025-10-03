@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, Query
 
-
 def auth_user(request: Request):
     auth = request.headers.get("Authorization","")
     if not auth.startswith("Bearer "): raise HTTPException(401, "Missing token")

@@ -1,12 +1,19 @@
+import json
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    API_PREFIX: str = "/api/v1"
+    # Paste the full Google JSON into .env like: GOOGLE_AUTH={...}
+    GOOGLE_AUTH: str
+
+    # Where to send the user AFTER callback (your Streamlit app)
+    FRONTEND_URL: str = "http://localhost:8501"
 
     class Config:
         env_file = ".env"
         case_sensitive = True
 
-settings = Settings()
+    @property
+    def google_client_config(self) -> dict:
+        return json.loads(self.GOOGLE_AUTH)
 
-print(settings)
+settings = Settings()

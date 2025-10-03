@@ -1,6 +1,5 @@
-def main():
-    print("Hello from ledgerx-api!")
+from fastapi import FastAPI
+from routers import auth
 
-
-if __name__ == "__main__":
-    main()
+app = FastAPI()
+app.include_router(auth.router)
