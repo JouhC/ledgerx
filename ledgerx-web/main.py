@@ -1,20 +1,24 @@
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000/auth"
+API = "http://localhost:8000"
+
+st.title("Login Demo")
 
 if st.button("Login with Google"):
-    r = requests.get(f"{API_URL}/login").json()
-    st.query_params.clear()  # clear old params
+    r = requests.get(f"{API}/auth/login").json()
+    st.query_params.clear()
     st.markdown(
         f'<meta http-equiv="refresh" content="0; url={r["auth_url"]}">',
         unsafe_allow_html=True,
     )
 
-# After redirect from Google (via FastAPI callback)
 params = st.query_params
-if "code" in params and "state" in params:
-    code = params["code"]
-    state = params["state"]
-    r = requests.get(f"{API_URL}/callback?code={code}&state={state}")
-    st.json(r.json())
+if "session" in params:
+    sid = params["session"]
+    try:
+        data = requests.get(f"{API}/auth/sessions/{sid}", timeout=10).json()
+        st.success("Logged in!")
+        st.json(data["user"])
+    except Exception as e:
+        st.error(f"Session fetch failed: {e}")

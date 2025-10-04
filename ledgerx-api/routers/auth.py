@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 import requests, secrets
 from utils.google_oauth import get_google_flow
 from utils.session_store import put, get as get_session
-from config import settings
+from core.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
