@@ -2,8 +2,20 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Literal, Dict
 from core.config import settings
+import datetime
 
-router = APIRouter(prefix=settings.API_PREFIX, tags=["reminders"])
+router = APIRouter(prefix=settings.API_PREFIX, tags=["fetch_bills"])
+
+class BillIn(BaseModel):
+    vendor: str
+    due_date: datetime
+    amount: float
+    currency: str = "PHP"
+    pdf_path: str
+    source_email_id: Optional[str] = None
+
+class FetchResponse(BaseModel):
+    added: int
 
 @router.get("bills")
 def get_bills(
