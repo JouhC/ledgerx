@@ -9,9 +9,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("request_logger")
 
 app = FastAPI(
-    title="Gift Code Redemption API",
-    description="API for managing players, fetching gift codes, and redeeming them.",
-    version="2.2.0",
+    title="Bills API",
+    description="API for bills",
+    version="1.0.0",
     lifespan=lifespan
 )
 

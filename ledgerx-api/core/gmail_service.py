@@ -55,3 +55,17 @@ def download_attachment(service, msg_id, attachment_id, filename):
     with open(path, "wb") as f:
         f.write(file_bytes)
     return path
+
+def extract_bills(query):
+    service = build_gmail_service()
+    msgs = list_messages(service, query, max_results=100)
+
+    saved = []
+    for m in msgs:
+        full = get_message(service, m["id"])
+        for fname, att_id in iter_pdf_attachments(full):
+            out = download_attachment(service, m["id"], att_id, fname)
+            if out:
+                saved.append(out)
+
+    return saved
