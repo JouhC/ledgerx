@@ -4,7 +4,7 @@ from typing import Optional, List, Literal, Dict
 from core.config import settings
 import datetime
 
-router = APIRouter(prefix=settings.API_PREFIX, tags=["fetch_bills"])
+router = APIRouter(prefix=settings.API_PREFIX, tags=["bills"])
 
 class BillIn(BaseModel):
     vendor: str

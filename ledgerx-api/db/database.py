@@ -126,8 +126,20 @@ def db_all():
         cur = conn.execute("SELECT * FROM bills ORDER BY status ASC, due_date ASC")
         return [dict(r) for r in cur.fetchall()]
 
+def get_bill_sources():
+    with sqlite3.connect(settings.DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute("SELECT * FROM bill_sources WHERE active=1 ORDER BY name ASC")
+        return [dict(r) for r in cur.fetchall()]
+
 def db_mark_paid(bill_id: int):
     with sqlite3.connect(settings.DB_PATH) as conn:
         conn.execute("UPDATE bills SET status='paid', paid_at=? WHERE id=? AND status!='paid'",
                      (datetime.utcnow().isoformat(), bill_id))
         conn.commit()
+
+def main():
+    db_init()
+
+if __name__ == "__main__":
+    main()
