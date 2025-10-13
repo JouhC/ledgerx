@@ -211,3 +211,5 @@ __marimo__/
 *.json
 */notebooks/gmail_attachments_poc/*
 */notebooks/output_searchable.pdf
+
+*.db
