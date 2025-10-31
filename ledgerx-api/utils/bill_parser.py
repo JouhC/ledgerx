@@ -12,12 +12,53 @@ import pytesseract
 # -------------------------------
 # 1) Helpers: decrypt + text extraction
 # -------------------------------
-def decrypt_to_temp(encrypted_pdf: str, password: str) -> str:
-    """Decrypts to a temporary PDF path and returns its filename."""
-    tmp = Path(tempfile.gettempdir()) / (Path(encrypted_pdf).stem + ".decrypted.tmp.pdf")
-    with pikepdf.open(encrypted_pdf, password=password) as pdf:
-        pdf.save(str(tmp))
-    return str(tmp)
+def decrypt_to_temp(encrypted_pdf: str, password: Optional[str] = None) -> str:
+    """
+    Open the PDF and save an unencrypted copy to a temporary file, returning its path.
+    - If password is None, attempt to open without a password (works for unencrypted PDFs).
+    - If the file is encrypted and no/incorrect password is provided, raises ValueError.
+    Note: this does NOT bypass password protection — you must have the password.
+    """
+    src = Path(encrypted_pdf)
+    if not src.exists():
+        raise FileNotFoundError(f"Input file not found: {encrypted_pdf}")
+
+    # Make a unique temp filename to avoid collisions
+    with tempfile.NamedTemporaryFile(
+        prefix=src.stem + ".", suffix=".decrypted.tmp.pdf", delete=False
+    ) as tf:
+        tmp_path = Path(tf.name)
+
+    try:
+        # Try opening. If password is provided, pass it; otherwise try without password.
+        if password is None:
+            # If the file is encrypted this will raise PasswordError
+            with pikepdf.open(str(src)) as pdf:
+                pdf.save(str(tmp_path))
+        else:
+            try:
+                with pikepdf.open(str(src), password=password) as pdf:
+                    pdf.save(str(tmp_path))
+            except pikepdf.PasswordError:
+                # Give a clearer, higher-level error
+                raise ValueError("PDF is encrypted and the provided password is incorrect.")
+    except pikepdf.PasswordError:
+        # This branch happens if password was None and the file required one
+        # Clean up temp file and raise informative error
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise ValueError("PDF is encrypted — provide the correct password to decrypt.")
+    except Exception:
+        # On unexpected errors, try to remove temp file and re-raise
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+    return str(tmp_path)
 
 def pdf_text_lines(pdf_path: str, max_pages: Optional[int] = None) -> List[str]:
     """Extract text lines with PyMuPDF (selectable text)."""

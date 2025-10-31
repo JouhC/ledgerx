@@ -40,6 +40,7 @@ def db_init():
             due_date_regex  TEXT,
             amount_regex    TEXT,
             currency        TEXT DEFAULT 'PHP',
+            password_env    TEXT,
             active          INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -65,9 +66,9 @@ def db_init():
 
             cur.executemany("""
                 INSERT INTO bill_sources (
-                    name, provider, gmail_query, sender_email, subject_like, include_kw
+                    name, provider, gmail_query, sender_email, subject_like, include_kw, exclude_kw, drive_folder_id, file_pattern, due_date_regex, amount_regex, currency
                 ) VALUES (
-                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw
+                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw, :exclude_kw, :drive_folder_id, :file_pattern, :due_date_regex, :amount_regex, :currency
                 )
                 ON CONFLICT(name) DO UPDATE SET
                     provider = excluded.provider,
@@ -75,6 +76,12 @@ def db_init():
                     sender_email = excluded.sender_email,
                     subject_like = excluded.subject_like,
                     include_kw = excluded.include_kw,
+                    exclude_kw = excluded.exclude_kw,
+                    drive_folder_id = excluded.drive_folder_id,
+                    file_pattern = excluded.file_pattern,
+                    due_date_regex = excluded.due_date_regex,
+                    amount_regex = excluded.amount_regex,
+                    currency = excluded.currency,
                     active = 1;
             """, default_sources)
 
