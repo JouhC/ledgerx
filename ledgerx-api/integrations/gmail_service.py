@@ -6,9 +6,10 @@ import base64
 import os
 import re
 from typing import Any
+from googleapiclient.errors import HttpError
+from datetime import datetime
 
-def build_gmail_service() -> Any:
-    """Gmail API service using stored token."""
+def build_gmail_service():
     creds = None
     if settings.credentials_desktop_token:
         creds = Credentials.from_authorized_user_info(settings.credentials_desktop_token)
@@ -17,8 +18,13 @@ def build_gmail_service() -> Any:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            raise Exception("No valid credentials available. Please set CREDENTIALS_DESKTOP_TOKEN in your .env file.")
-    return build("gmail", "v3", credentials=creds)
+            raise RuntimeError("No valid Gmail credentials found.")
+
+    try:
+        service = build("gmail", "v1", credentials=creds)
+        return service
+    except HttpError as e:
+        raise RuntimeError(f"Gmail service build failed: {e}")
 
 def list_messages(service, query, max_results=100):
     resp = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
@@ -31,6 +37,15 @@ def iter_pdf_attachments(msg):
     """Yield (filename, attachmentId) for PDF attachments found in message parts."""
     payload = msg.get("payload", {}) or {}
     stack = [payload]
+    sent_ts = msg.get("internalDate")  
+
+    # Convert timestamp if available
+    if sent_ts:
+        try:
+            sent_date = datetime.fromtimestamp(int(sent_ts) / 1000)
+        except Exception:
+            pass
+
     while stack:
         part = stack.pop()
         # push nested parts
@@ -40,9 +55,9 @@ def iter_pdf_attachments(msg):
         filename = part.get("filename") or ""
         body = part.get("body") or {}
         if filename and "attachmentId" in body and filename.lower().endswith(".pdf"):
-            yield filename, body["attachmentId"]
+            yield filename, body["attachmentId"], sent_date
 
-def download_attachment(service, msg_id, attachment_id, filename):
+def download_attachment(service, msg_id, attachment_id, filename, outname):
     att = service.users().messages().attachments().get(
         userId="me", messageId=msg_id, id=attachment_id
     ).execute()
@@ -51,21 +66,27 @@ def download_attachment(service, msg_id, attachment_id, filename):
         return None
     file_bytes = base64.urlsafe_b64decode(data.encode("utf-8"))
     safe = re.sub(r'[\\/:*?"<>|]+', "_", filename) or f"{msg_id}.pdf"
-    path = os.path.join(settings.TEMP_ATTACHED_DIR, safe)
+    path = os.path.join(settings.TEMP_ATTACHED_DIR, outname)
+    
     with open(path, "wb") as f:
         f.write(file_bytes)
     return path
 
-def extract_bills(query):
+def extract_bills(source):
+    query = source['gmail_query']
     service = build_gmail_service()
     msgs = list_messages(service, query, max_results=100)
 
     saved = []
     for m in msgs:
         full = get_message(service, m["id"])
-        for fname, att_id in iter_pdf_attachments(full):
-            out = download_attachment(service, m["id"], att_id, fname)
+        for fname, att_id, sent_date in iter_pdf_attachments(full):
+            outname = source['file_pattern'].format(
+                month=sent_date.strftime("%B"),
+                year=sent_date.strftime("%Y")
+            )
+            out = download_attachment(service, m["id"], att_id, fname, outname)
             if out:
-                saved.append(out)
+                saved.append((sent_date, out))
 
     return saved

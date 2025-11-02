@@ -1,8 +1,9 @@
 from __future__ import annotations
 import re, os, tempfile
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Union
 from dateutil import parser as dtparser
+import shutil
 
 import pikepdf
 import fitz  # PyMuPDF
@@ -139,14 +140,20 @@ def find_nearby(lines: List[str], idx: int, window: int = 2) -> List[str]:
     R = min(len(lines), idx + window + 1)
     return lines[L:R]
 
-def match_any(line: str, patterns: List[str]) -> Optional[re.Match]:
+def match_any(line: str, patterns: Union[str, List[str]]) -> Optional[re.Match]:
+    if not isinstance(patterns, List):
+        patterns = [patterns]  # convert single pattern to list
+    
     for pat in patterns:
-        m = re.search(pat, line, flags=re.IGNORECASE)
+        if isinstance(pat, re.Pattern):
+            m = pat.search(line)            # compiled: do NOT pass flags
+        else:
+            m = re.search(pat, line, re.IGNORECASE) # string pattern: flags OK
         if m:
             return m
     return None
 
-def extract_due_and_amount(lines: List[str]) -> Dict[str, Optional[str]]:
+def extract_due_and_amount(lines: List[str], source) -> Dict[str, Optional[str]]:
     """
     Strategy:
       - For due date: look for date keywords; parse date on the same line or the next 2 lines.
@@ -157,9 +164,13 @@ def extract_due_and_amount(lines: List[str]) -> Dict[str, Optional[str]]:
     amount_value: Optional[float] = None
     amount_source: Optional[str] = None
 
+    due_date_regex = re.compile(source.get("due_date_regex"), re.IGNORECASE) if source.get("due_date_regex") else None
+    amount_regex = re.compile(source.get("amount_regex"), re.IGNORECASE) if source.get("amount_regex") else None
+
     # Pass 1: Due Date
+    print(lines)
     for i, line in enumerate(lines):
-        if match_any(line, DATE_KEYWORDS):
+        if match_any(line, due_date_regex if due_date_regex else DATE_KEYWORDS):
             # Try same line first
             dd = parse_date_any(line)
             if dd:
@@ -187,7 +198,7 @@ def extract_due_and_amount(lines: List[str]) -> Dict[str, Optional[str]]:
                 candidates.append((am, 1, line))
             continue
 
-        pri_hit = match_any(line, AMOUNT_KEYWORDS_PRIMARY)
+        pri_hit = match_any(line, amount_regex if amount_regex else AMOUNT_KEYWORDS_PRIMARY)
         am = normalize_amount(line)
         if am is not None:
             score = 3 if pri_hit else 2
@@ -216,12 +227,15 @@ def extract_due_and_amount(lines: List[str]) -> Dict[str, Optional[str]]:
 # -------------------------------
 # 3) One-call entry point
 # -------------------------------
-def extract_bill_fields(encrypted_pdf: str, password: str, lang: str = "eng") -> Dict[str, Optional[str]]:
+def extract_bill_fields(encrypted_pdf: str, password: str, source: list, lang: str = "eng") -> Dict[str, Optional[str]]:
     lines, dec_path = get_text_lines_smart(encrypted_pdf, password, lang=lang)
-    out = extract_due_and_amount(lines)
+    out = extract_due_and_amount(lines, source)
     # Clean up decrypted temp file
     try:
-        os.remove(dec_path)
+        shutil.move(dec_path, encrypted_pdf)
+        # Ensure tempfile is gone
+        if dec_path.exists():
+            dec_path.unlink(missing_ok=True)
     except Exception:
         pass
     return out

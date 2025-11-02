@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore",            # ignore env vars you didn't model
+        extra="allow",
     )
 
     # --- fields ---
@@ -38,5 +38,19 @@ class Settings(BaseSettings):
     @classmethod
     def ensure_absolute(cls, v):
         return Path(v).resolve()
+    
+    # Create parent folder for DB_PATH (treated as a file path)
+    @field_validator("DB_PATH", "DEFAULT_SOURCES_PATH", mode="after")
+    @classmethod
+    def ensure_db_parent_exists(cls, p: Path) -> Path:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    # Create the directories if they don't exist
+    @field_validator("TEMP_ATTACHED_DIR", mode="after")
+    @classmethod
+    def ensure_dirs_exist(cls, p: Path) -> Path:
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
 settings = Settings()

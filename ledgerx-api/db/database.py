@@ -1,6 +1,6 @@
 import sqlite3
 from core.config import settings
-import datetime
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -11,15 +11,16 @@ def db_init():
         conn.execute("""
         CREATE TABLE IF NOT EXISTS bills (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            vendor TEXT,
+            name TEXT,
             due_date TEXT,
-            amount REAL,
+            sent_date TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            amount TEXT,
             currency TEXT DEFAULT 'PHP',
             status TEXT DEFAULT 'unpaid',
             source_email_id TEXT,
             drive_file_id TEXT,
             drive_file_name TEXT,
-            created_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             paid_at TEXT,
             notes TEXT
         )""")
@@ -37,8 +38,6 @@ def db_init():
             exclude_kw      TEXT,
             drive_folder_id TEXT,
             file_pattern    TEXT,
-            due_date_regex  TEXT,
-            amount_regex    TEXT,
             currency        TEXT DEFAULT 'PHP',
             password_env    TEXT,
             active          INTEGER NOT NULL DEFAULT 1,
@@ -66,9 +65,9 @@ def db_init():
 
             cur.executemany("""
                 INSERT INTO bill_sources (
-                    name, provider, gmail_query, sender_email, subject_like, include_kw, exclude_kw, drive_folder_id, file_pattern, due_date_regex, amount_regex, currency
+                    name, provider, gmail_query, sender_email, subject_like, include_kw, exclude_kw, drive_folder_id, file_pattern, currency, password_env
                 ) VALUES (
-                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw, :exclude_kw, :drive_folder_id, :file_pattern, :due_date_regex, :amount_regex, :currency
+                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw, :exclude_kw, :drive_folder_id, :file_pattern, :currency, :password_env
                 )
                 ON CONFLICT(name) DO UPDATE SET
                     provider = excluded.provider,
@@ -79,9 +78,8 @@ def db_init():
                     exclude_kw = excluded.exclude_kw,
                     drive_folder_id = excluded.drive_folder_id,
                     file_pattern = excluded.file_pattern,
-                    due_date_regex = excluded.due_date_regex,
-                    amount_regex = excluded.amount_regex,
                     currency = excluded.currency,
+                    password_env = excluded.password_env,
                     active = 1;
             """, default_sources)
 
@@ -91,39 +89,48 @@ def db_init():
             -- Track last run of fetching bills
             CREATE TABLE IF NOT EXISTS last_run (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                vendor        TEXT NOT NULL,
-                last_fetch_at TEXT NOT NULL,
+                name          TEXT NOT NULL,
                 success       INTEGER NOT NULL DEFAULT 1,
-                total_fetched INTEGER DEFAULT 0,
-                total_new     INTEGER DEFAULT 0,
                 duration_sec  REAL,
                 notes         TEXT,
-                created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-                UNIQUE(vendor)
+                last_fetch_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(name)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_last_run_vendor ON last_run(vendor);
-            CREATE INDEX IF NOT EXISTS idx_last_run_success ON last_run(success);
+            CREATE INDEX IF NOT EXISTS idx_last_run_name_lastfetch ON last_run(name, last_fetch_at DESC);
         """)
         conn.commit()
+
+def bill_exists(item: dict) -> bool:
+    with sqlite3.connect(settings.DB_PATH) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT EXISTS(
+                SELECT 1 FROM bills
+                WHERE name = ? AND sent_date = ?
+            )
+        """, (item.get("name"), item.get("sent_date")))
+
+        return bool(cur.fetchone()[0])
 
 def db_insert_bill(item: dict):
     with sqlite3.connect(settings.DB_PATH) as conn:
         conn.execute("""
-        INSERT INTO bills (vendor, due_date, amount, currency, status, source_email_id,
-                           drive_file_id, drive_file_name, created_at, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO bills (name, due_date, sent_date, amount, currency, status, source_email_id,
+                           drive_file_id, drive_file_name, paid_at, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            item.get("vendor"),
+            item.get("name"),
             item.get("due_date"),
-            item.get("amount"),
+            item.get("sent_date"),
+            item.get("amount"),  
             item.get("currency","PHP"),
             item.get("status","unpaid"),
             item.get("source_email_id"),
             item.get("drive_file_id"),
             item.get("drive_file_name"),
-            datetime.utcnow().isoformat(),
-            item.get("notes"),
+            item.get("status","unpaid") == "paid" and datetime.utcnow().isoformat() or None,
+            item.get("notes", "none"),
         ))
         conn.commit()
 
@@ -144,6 +151,49 @@ def db_mark_paid(bill_id: int):
         conn.execute("UPDATE bills SET status='paid', paid_at=? WHERE id=? AND status!='paid'",
                      (datetime.utcnow().isoformat(), bill_id))
         conn.commit()
+
+def get_last_run(name):
+    with sqlite3.connect(settings.DB_PATH) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT last_fetch_at FROM last_run WHERE name = ? ORDER BY datetime(last_fetch_at) DESC LIMIT 1",(name,))
+        row = cur.fetchone()
+
+        if row:
+            print("Latest run:")
+            print(row)
+            return row
+        else:
+            print("No records found for:", name)
+        
+        return None
+    
+def insert_or_update_last_run(item):
+    if get_last_run(item.get("name")):
+        with sqlite3.connect(settings.DB_PATH) as conn:
+            conn.execute("""
+            UPDATE last_run
+            SET success = ?, duration_sec = ?, notes = ?, last_fetch_at = ?
+            WHERE name = ?
+            """, (
+                item.get("success", 0),
+                item.get("duration_sec"),
+                item.get("notes", "none"),
+                datetime.utcnow().isoformat(),
+                item.get("name")
+            ))
+            conn.commit()
+    else:
+        with sqlite3.connect(settings.DB_PATH) as conn:
+            conn.execute("""
+            INSERT INTO last_run (name, success, duration_sec, notes)
+            VALUES (?, ?, ?, ?)
+            """, (
+                item.get("name"),
+                item.get("success", 0),
+                item.get("duration_sec"),
+                item.get("notes", "none")
+            ))
+            conn.commit()
 
 def main():
     db_init()

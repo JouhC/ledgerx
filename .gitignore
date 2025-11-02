@@ -213,3 +213,5 @@ __marimo__/
 */notebooks/output_searchable.pdf
 
 *.db
+
+*/temp_attachments/*
