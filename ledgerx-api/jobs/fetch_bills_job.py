@@ -118,22 +118,15 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
     if tasks:
         await asyncio.gather(*tasks)
 
-async def run_fetch_all_async(task_id: str):
-    await PROGRESS.start(task_id, "Fetching all bill sources...")
+async def run_fetch_all_async():
     try:
         sources = await asyncio.to_thread(get_bill_sources)
-        total_sources = len(sources)
-        done_sources = 0
+        bill_sem = asyncio.Semaphore(5)
 
         for source in sources:
-            await process_source(source)
-            done_sources += 1
-            progress = (done_sources / total_sources) * 100
-            await PROGRESS.update_progress(task_id, progress, f"Processed {done_sources}/{total_sources} sources")
+            await process_source(source, bill_sem)
 
-        await PROGRESS.finish(task_id, result=f"Fetched all {total_sources} sources successfully")
     except Exception as e:
-        await PROGRESS.fail(task_id, str(e))
         raise
 
 # convenience sync entrypoint

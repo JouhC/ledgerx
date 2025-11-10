@@ -2,7 +2,6 @@ import logging
 from time import time
 from datetime import datetime
 from fastapi import FastAPI, Request
-from core.dependencies import get_task_manager
 from routers import health, bills
 
 logging.basicConfig(level=logging.INFO)

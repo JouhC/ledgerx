@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from typing import Optional, List, Literal, Dict
 from core.config import settings
 from jobs.fetch_bills_job import run_fetch_all
-import datetime
+from datetime import datetime, timezone
+from db.database import db_all
+from services.progress import PROGRESS
 
 router = APIRouter(prefix=settings.API_PREFIX, tags=["bills"])
 
@@ -18,6 +20,14 @@ class BillIn(BaseModel):
 class FetchResponse(BaseModel):
     added: int
 
-@router.get("fetch_bills")
+@router.get("/fetch_bills")
 def get_bills():
     run_fetch_all()
+
+    response = {
+        "status": "Completed",
+        "bills": db_all()
+    }
+
+    return response
+    
