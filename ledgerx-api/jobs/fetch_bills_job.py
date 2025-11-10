@@ -27,6 +27,7 @@ def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
                 except exceptions as e:
                     last = e
                     if delay == float('inf'):
+                        print(f"Function {fn.__name__} failed after {i} attempts.")
                         raise
                     await asyncio.sleep(delay)
             raise last
@@ -73,6 +74,7 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
             "source_email_id": None,
             "drive_file_id": None,
             "drive_file_name": value["bills_path"],
+            "category": value.get("category", "uncategorized"),
         }
         await run_blocking(db_insert_bill, record)
         await run_blocking(insert_or_update_last_run, {
@@ -111,7 +113,8 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
             "bills_path": path,
             "password": password,
             "start_time": _now(),
-            "label": f"{source['name']} {idx}"
+            "label": f"{source['name']} {idx}",
+            "category": source.get("category", "uncategorized"),
         }
         tasks.append(asyncio.create_task(process_single_bill(value, bill_sem)))
 
@@ -124,9 +127,12 @@ async def run_fetch_all_async():
         bill_sem = asyncio.Semaphore(5)
 
         for source in sources:
+            print(f"Processing source: {source['name']}")
+            print(f"Source details: {source['category']}")
             await process_source(source, bill_sem)
 
     except Exception as e:
+        print(f"Error in run_fetch_all_async: {e}")
         raise
 
 # convenience sync entrypoint

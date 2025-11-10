@@ -22,6 +22,7 @@ def db_init():
             drive_file_name TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             paid_at TEXT,
+            category TEXT,
             notes TEXT
         )""")
 
@@ -40,6 +41,7 @@ def db_init():
             file_pattern    TEXT,
             currency        TEXT DEFAULT 'PHP',
             password_env    TEXT,
+            category        TEXT DEFAULT 'uncategorized',
             active          INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -65,9 +67,9 @@ def db_init():
 
             cur.executemany("""
                 INSERT INTO bill_sources (
-                    name, provider, gmail_query, sender_email, subject_like, include_kw, exclude_kw, drive_folder_id, file_pattern, currency, password_env
+                    name, provider, gmail_query, sender_email, subject_like, include_kw, exclude_kw, drive_folder_id, file_pattern, currency, password_env, category
                 ) VALUES (
-                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw, :exclude_kw, :drive_folder_id, :file_pattern, :currency, :password_env
+                    :name, :provider, :gmail_query, :sender_email, :subject_like, :include_kw, :exclude_kw, :drive_folder_id, :file_pattern, :currency, :password_env, :category
                 )
                 ON CONFLICT(name) DO UPDATE SET
                     provider = excluded.provider,
@@ -80,6 +82,7 @@ def db_init():
                     file_pattern = excluded.file_pattern,
                     currency = excluded.currency,
                     password_env = excluded.password_env,
+                    category = excluded.category,
                     active = 1;
             """, default_sources)
 
@@ -117,8 +120,8 @@ def db_insert_bill(item: dict):
     with sqlite3.connect(settings.DB_PATH) as conn:
         conn.execute("""
         INSERT INTO bills (name, due_date, sent_date, amount, currency, status, source_email_id,
-                           drive_file_id, drive_file_name, paid_at, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           drive_file_id, drive_file_name, paid_at, category, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             item.get("name"),
             item.get("due_date"),
@@ -130,6 +133,7 @@ def db_insert_bill(item: dict):
             item.get("drive_file_id"),
             item.get("drive_file_name"),
             item.get("status","unpaid") == "paid" and datetime.utcnow().isoformat() or None,
+            item.get("category", "uncategorized"),
             item.get("notes", "none"),
         ))
         conn.commit()

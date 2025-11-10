@@ -5,7 +5,6 @@ from core.config import settings
 from jobs.fetch_bills_job import run_fetch_all
 from datetime import datetime, timezone
 from db.database import db_all
-from services.progress import PROGRESS
 
 router = APIRouter(prefix=settings.API_PREFIX, tags=["bills"])
 
@@ -22,12 +21,35 @@ class FetchResponse(BaseModel):
 
 @router.get("/fetch_bills")
 def get_bills():
-    run_fetch_all()
+    try:
+        run_fetch_all()
+        response = {
+            "status": "Success",
+            "message": "Successfully fetched bills!"
+        }
+    except Exception as e:
+        response = {
+            "status": "Failed",
+            "message": e
+        }
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        return response
 
-    response = {
-        "status": "Completed",
-        "bills": db_all()
-    }
-
-    return response
+@router.get("/get_bills")
+def get_bills():
+    try:
+        bills = db_all()
+        response = {
+            "status": "Success",
+            "bills": bills
+        }
+    except Exception as e:
+        response = {
+            "status": "Failed",
+            "message": "Failed to retrieve bills."
+        }
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        return response
     
