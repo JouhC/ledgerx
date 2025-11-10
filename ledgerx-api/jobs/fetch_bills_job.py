@@ -4,72 +4,141 @@ from utils.bill_parser_v2 import extract_bill_fields
 from core.config import settings
 from datetime import datetime, timedelta
 
-def fetch_bills_for_all_sources():
-    sources = get_bill_sources()
-    all_new_bills = []
-    for source in sources:
-        new_bills = extract_bills(source)
-        all_new_bills.extend(new_bills)
-    return all_new_bills
+import asyncio
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Tuple, Optional
+from services.progress import PROGRESS
 
-def main():
-    sources = get_bill_sources()
-    result_dict = {}
+# ---- tiny helpers -----------------------------------------------------------
 
-    for source in sources:
-        last_run = get_last_run(source["name"])
-        if last_run:
-            print(last_run)
-            last_fetch_at = last_run[0]
-            if last_fetch_at:
+def _now():
+    return datetime.now()
+
+async def run_blocking(fn, *args, **kwargs):
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
+    def deco(fn):
+        async def wrapped(*args, **kwargs):
+            last = None
+            for i, delay in enumerate(backoff + (float('inf'),), 1):
                 try:
-                    # support ISO strings with a trailing 'Z'
-                    last_fetch = datetime.fromisoformat(last_fetch_at.rstrip("Z"))
-                except Exception:
-                    print(f"Could not parse last_fetch_at for {source['name']}: {last_fetch_at}")
-                else:
-                    if datetime.now() - last_fetch < timedelta(days=1):
-                        print(f"Skipping source {source['name']} as it was fetched less than 1 day ago.")
-                        continue
-        password = settings.model_extra[source['password_env']] if source['password_env'] != "None" else ""
-        bills_path = extract_bills(source)
+                    return await fn(*args, **kwargs)
+                except exceptions as e:
+                    last = e
+                    if delay == float('inf'):
+                        raise
+                    await asyncio.sleep(delay)
+            raise last
+        return wrapped
+    return deco
 
-        print(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
-        
-        counter = 1
-        for bills in bills_path:
-            result_dict[f"{source['name']} {counter}"] = {
-                "name": source['name'],
-                "sent_date": bills[0],
-                "bills_path": bills[1],
-                "password": password,
-                "start_time": datetime.now()
-            }
-            counter += 1
-    
-    for key, value in result_dict.items():
-        if bill_exists(value):
+
+CONCURRENCY_PER_BILL = 4   # tune: start with 4-8 for mixed IO/CPU
+CONCURRENCY_PER_SOURCE = 2 # if sources fetch from network/drive
+LANG = "eng"
+
+@retry()
+async def extract_bill_fields_async(path: str, password: str) -> Optional[Dict[str, Any]]:
+    # wrap the blocking/CPU work (OCR/regex/PDF) off the event loop
+    return await run_blocking(extract_bill_fields, path, password=password, lang=LANG)
+
+async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
+    async with sem:
+        # quick existence check first to avoid wasted OCR
+        exists = await run_blocking(bill_exists, value)
+        if exists:
             print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
-            continue
+            return
 
-        bill_data = extract_bill_fields(value["bills_path"], password=value["password"], lang="eng")
-        if bill_data:
-            db_insert_bill({
-                "name":value["name"],
-                "due_date": bill_data.get("payment_due_date"),
-                "sent_date": value["sent_date"],
-                "amount": str(bill_data.get("total_amount_due")),
-                "currency": "PHP",
-                "status": "unpaid",
-                "source_email_id": None,
-                "drive_file_id": None,
-                "drive_file_name": value["bills_path"]})
-            
-            insert_or_update_last_run({
-                "name":value["name"],
-                "success": 1,
-                "duration_sec": (datetime.now() - value["start_time"]).total_seconds()})
-            print(f"Extracted bill data: {bill_data}")
+        bill_data = await extract_bill_fields_async(value["bills_path"], password=value["password"])
+        if not bill_data:
+            print(f"⚠️ No fields extracted for {value['bills_path']}")
+            # still write a last_run with success=0 to avoid infinite retries spiking?
+            await run_blocking(insert_or_update_last_run, {
+                "name": value["name"],
+                "success": 0,
+                "duration_sec": (_now() - value["start_time"]).total_seconds()
+            })
+            return
+
+        # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
+        record = {
+            "name": value["name"],
+            "due_date": bill_data.get("payment_due_date"),
+            "sent_date": value["sent_date"],
+            "amount": str(bill_data.get("total_amount_due")),
+            "currency": "PHP",
+            "status": "unpaid",
+            "source_email_id": None,
+            "drive_file_id": None,
+            "drive_file_name": value["bills_path"],
+        }
+        await run_blocking(db_insert_bill, record)
+        await run_blocking(insert_or_update_last_run, {
+            "name": value["name"],
+            "success": 1,
+            "duration_sec": (_now() - value["start_time"]).total_seconds()
+        })
+        print(f"Extracted bill data: {bill_data}")
+
+async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
+    # 1-day skip
+    last_run = await run_blocking(get_last_run, source["name"])
+    if last_run:
+        last_fetch_at = last_run[0]
+        if last_fetch_at:
+            try:
+                last_fetch = datetime.fromisoformat(str(last_fetch_at).rstrip("Z"))
+            except Exception:
+                print(f"Could not parse last_fetch_at for {source['name']}: {last_fetch_at}")
+            else:
+                if _now() - last_fetch < timedelta(days=1):
+                    print(f"Skipping source {source['name']} as it was fetched less than 1 day ago.")
+                    return
+
+    password = settings.model_extra[source['password_env']] if source['password_env'] != "None" else ""
+
+    # fetch list of bills (blocking I/O), then fan out per bill
+    bills_path: List[Tuple[str, str]] = await run_blocking(extract_bills, source)
+    print(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
+
+    tasks = []
+    for idx, (sent_date, path) in enumerate(bills_path, start=1):
+        value = {
+            "name": source["name"],
+            "sent_date": sent_date,
+            "bills_path": path,
+            "password": password,
+            "start_time": _now(),
+            "label": f"{source['name']} {idx}"
+        }
+        tasks.append(asyncio.create_task(process_single_bill(value, bill_sem)))
+
+    if tasks:
+        await asyncio.gather(*tasks)
+
+async def run_fetch_all_async(task_id: str):
+    await PROGRESS.start(task_id, "Fetching all bill sources...")
+    try:
+        sources = await asyncio.to_thread(get_bill_sources)
+        total_sources = len(sources)
+        done_sources = 0
+
+        for source in sources:
+            await process_source(source)
+            done_sources += 1
+            progress = (done_sources / total_sources) * 100
+            await PROGRESS.update_progress(task_id, progress, f"Processed {done_sources}/{total_sources} sources")
+
+        await PROGRESS.finish(task_id, result=f"Fetched all {total_sources} sources successfully")
+    except Exception as e:
+        await PROGRESS.fail(task_id, str(e))
+        raise
+
+# convenience sync entrypoint
+def run_fetch_all():
+    asyncio.run(run_fetch_all_async())
 
 if __name__ == "__main__":
-    main()
+    run_fetch_all()

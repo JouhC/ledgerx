@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, Query
+from services.task_manager import TaskManager
 
 def auth_user(request: Request):
     auth = request.headers.get("Authorization","")
@@ -13,3 +14,7 @@ def auth_user(request: Request):
     u = next((u for u in USERS.values() if u["id"]==uid), None)
     if not u: raise HTTPException(401, "User not found")
     return u
+
+def get_task_manager(request: Request) -> TaskManager:
+    # Provided via app.state in main.py
+    return request.app.state.task_manager  # type: ignore[attr-defined]
