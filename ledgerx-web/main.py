@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import plotly.express as px
+from config import settings
 
 try:
     import requests  # optional for live API fetch
@@ -30,6 +31,20 @@ st.set_page_config(
 # -----------------------------
 # Helpers
 # -----------------------------
+
+def _init_state():
+    st.session_state.setdefault("paying_id", None)
+    st.session_state.setdefault("pay_inflight", False)
+    st.session_state.setdefault("api_json", None)
+    st.session_state.setdefault("last_url", None)
+    st.session_state.setdefault("auto_fetch_done", False)
+
+_init_state()
+
+def _queue_pay(bid: str, disabled: bool):
+    if disabled or st.session_state.get("pay_inflight"):
+        return
+    st.session_state["paying_id"] = bid
 
 def _peso(x: Any) -> str:
     if pd.isna(x):
@@ -167,35 +182,55 @@ with st.sidebar:
         sample = {
             "status": "Success",
             "bills": [
-                {"id": 1, "name": "BPI Rewards", "due_date": "2025-09-17", "sent_date": "2025-09-11 00:09:44", "amount": "37265.35", "currency": "PHP", "status": "unpaid", "drive_file_name": "/root/dev/ledgerx/ledgerx-api/temp_attachments/BPI Rewards - September 2025.pdf", "paid_at": None, "category": "credit_card", "notes": "none"},
-                {"id": 2, "name": "BPI Rewards", "due_date": "2025-10-20", "sent_date": "2025-10-16 00:07:14", "amount": "27977.21", "currency": "PHP", "status": "unpaid", "drive_file_name": "/root/dev/ledgerx/ledgerx-api/temp_attachments/BPI Rewards - October 2025.pdf", "paid_at": None, "category": "credit_card", "notes": "none"},
-                {"id": 3, "name": "HSBC Gold Visa", "due_date": "2025-11-03", "sent_date": "2025-10-11 20:40:14", "amount": "5617.13", "currency": "PHP", "status": "unpaid", "drive_file_name": "/root/dev/ledgerx/ledgerx-api/temp_attachments/HSBC Gold - October 2025.pdf", "paid_at": None, "category": "credit_card", "notes": "none"},
-                {"id": 4, "name": "HSBC Gold Visa", "due_date": "2025-10-06", "sent_date": "2025-09-13 07:37:28", "amount": "32853.16", "currency": "PHP", "status": "unpaid", "drive_file_name": "/root/dev/ledgerx/ledgerx-api/temp_attachments/HSBC Gold - September 2025.pdf", "paid_at": None, "category": "credit_card", "notes": "none"}
-            ]
+                {"id": 1, "name": "BPI Rewards", "due_date": "2025-09-17", "amount": "37265.35", "status": "unpaid"},
+                {"id": 2, "name": "BPI Rewards", "due_date": "2025-10-20", "amount": "27977.21", "status": "unpaid"},
+                {"id": 3, "name": "HSBC Gold Visa", "due_date": "2025-11-03", "amount": "5617.13", "status": "unpaid"},
+            ],
         }
         default_text = json.dumps(sample, indent=2)
         raw_text = st.text_area("Paste your /bills JSON here", value=default_text, height=250)
         try:
             api_json = json.loads(raw_text)
+            st.session_state["api_json"] = api_json
+            st.session_state["auto_fetch_done"] = False  # reset
         except Exception as e:
             st.error(f"Invalid JSON: {e}")
             api_json = None
-    else:
-        url = st.text_input("API URL (GET)", value="http://localhost:8000/api/v1/get_bills")
-        go = st.button("Fetch")
-        if go:
-            if requests is None:
-                st.error("'requests' is not installed. Install it or use Paste JSON mode.")
-            else:
-                try:
-                    resp = requests.get(url, timeout=20)
-                    resp.raise_for_status()
-                    api_json = resp.json()
-                except Exception as e:
-                    st.error(f"Fetch failed: {e}")
-                    api_json = None
 
-# Fallback if no data yet
+    else:
+        default_url = st.session_state.get("last_url") or f"{settings.API}/get_bills"
+        url = st.text_input("API URL (GET)", value=default_url)
+        go = st.button("Fetch")
+
+        # Manual fetch button
+        if go:
+            try:
+                resp = requests.get(url, timeout=20)
+                resp.raise_for_status()
+                st.session_state["api_json"] = resp.json()
+                st.session_state["last_url"] = url
+                st.session_state["auto_fetch_done"] = True
+                st.success("Fetched successfully.")
+            except Exception as e:
+                st.error(f"Fetch failed: {e}")
+
+        # Automatic re-fetch on reload if same URL was used before
+        elif (
+            st.session_state.get("last_url") == url
+            and not st.session_state.get("auto_fetch_done")
+            and url
+        ):
+            try:
+                resp = requests.get(url, timeout=20)
+                resp.raise_for_status()
+                st.session_state["api_json"] = resp.json()
+                st.session_state["auto_fetch_done"] = True
+                st.info(f"Auto-fetched data from {url}")
+            except Exception as e:
+                st.warning(f"Auto-fetch skipped: {e}")
+
+# ---------- Use fetched or pasted data ----------
+api_json = st.session_state.get("api_json")
 if not api_json:
     st.info("Provide JSON (sidebar) to render the report.")
     st.stop()
@@ -254,7 +289,7 @@ avg_delay = all_delays.mean() if not all_delays.empty else np.nan
 # Auto-paid rate (unknown → assume False)
 auto_paid_rate = float(cards_month.get("auto_debit", pd.Series([False]*len(cards_month))).mean())
 
-col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.8, 1.2, 1.3, 1.1, 1.1])
+col1, col2, col3, col4, col5, col6 = st.columns([1.8, 1.8, 1.2, 1.3, 1.1, 1.1])
 col1.metric("Total Bills Paid (This Month)", _peso(this_month_paid), _peso(this_month_paid - last_month_paid))
 col2.metric("Credit Card Total Due", _peso(credit_total_due))
 col3.metric("Utilities Total Due", _peso(utilities_total_due))
@@ -302,7 +337,7 @@ for _, row in cards_month.iterrows():
     bill_id = row.get("id")
     name = row.get("card", "")
     due = row.get("due_date", "")
-    amt = row.get("amount", 0.0)
+    amt = row.get("total_due", 0.0)
     status = str(row.get("status", "")).lower()
     pdf_path = row.get("pdf_path", "")
 
@@ -331,31 +366,42 @@ for _, row in cards_month.iterrows():
 
     # --- Pay button (calls API) ---
     disabled = status == "paid"
-    pay_btn = c6.button(
-        "Pay" if not disabled else "Paid",
+    c6.button(
+        "Paid" if disabled else "Pay",
         key=f"pay_{bill_id}",
         disabled=disabled,
-        width='stretch',
+        on_click=_queue_pay,
+        args=(bill_id, disabled),
+        use_container_width=True,
     )
-    if pay_btn:
-        with st.spinner("Processing payment..."):
-            try:
-                # Example endpoints: choose one style and mirror in your FastAPI
-                # 1) RESTful path:
-                #   POST {API_BASE}/bills/{bill_id}/pay
-                # 2) RPC:
-                #   POST {API_BASE}/pay with JSON {"bill_id": ...}
-                resp = requests.post(
-                    f"http://localhost:8000/api/v1/bills/{bill_id}/pay",
-                    timeout=30,
-                )
-                if resp.ok:
-                    st.success(f"Bill {bill_id} marked as paid.")
-                    st.experimental_rerun()
-                else:
-                    st.error(f"Payment failed: {resp.status_code} {resp.text}")
-            except Exception as e:
-                st.error(f"Payment error: {e}")
+
+# ---------- Handle queued payment once, after rendering ----------
+paying_id = st.session_state.get("paying_id")
+if paying_id and not st.session_state.get("pay_inflight"):
+    st.session_state["pay_inflight"] = True
+    with st.spinner(f"Processing payment for {paying_id}..."):
+        try:
+            # Choose ONE style. Example below assumes RESTful:
+            # settings.API should be the /bills base, e.g., https://api.example.com/bills
+            resp = requests.post(
+                f"{settings.API}/{paying_id}/pay",
+                timeout=30,
+            )
+            if resp.ok:
+                st.success(f"Bill {paying_id} marked as paid.")
+                # Clear queued action so rerun doesn't repeat the call
+                st.session_state["paying_id"] = None
+                # If you repopulate 'cards_month' from API, you can allow natural rerun.
+                # If you need an immediate refresh of cached data, uncomment:
+                # st.rerun()
+            else:
+                st.error(f"Payment failed: {resp.status_code} {resp.text}")
+                st.session_state["paying_id"] = None
+        except Exception as e:
+            st.error(f"Payment error: {e}")
+            st.session_state["paying_id"] = None
+        finally:
+            st.session_state["pay_inflight"] = False
 
 # -----------------------------
 # 3) Utilities & Subscriptions (if any)
