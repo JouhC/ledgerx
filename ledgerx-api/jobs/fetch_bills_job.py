@@ -127,8 +127,6 @@ async def run_fetch_all_async():
         bill_sem = asyncio.Semaphore(5)
 
         for source in sources:
-            print(f"Processing source: {source['name']}")
-            print(f"Source details: {source['category']}")
             await process_source(source, bill_sem)
 
     except Exception as e:

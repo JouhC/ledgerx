@@ -124,9 +124,15 @@ _MONEY_RE = re.compile(
 )
 
 PATTERNS = {
-    "total_balance": r"(?i)total\s+account\s+balance\s+([\d,]+\.\d{2})",
-    "due_date": r"(?i)(?:payment\s+)?due\s+date\s+(\d{1,2}\s+\w+\s+\d{4})",
-    "min_payment": r"(?i)minimum\s+payment\s+([\d,]+\.\d{2})"
+    "total_balance": [
+        r"(?i)total\s+account\s+balance\s+([\d,]+\.\d{2})",
+        r"TOTAL AMOUNT DUE[\sA-Z]*([0-9][0-9,]*\.\d{2})"],
+    "due_date": [
+        r"(?i)(?:payment\s+)?due\s+date\s+(\d{1,2}\s+\w+\s+\d{4})",
+        r"PAYMENT\s+DUE\s+DATE\b[^\n\r]*[\r\n]+([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4})"],
+    "min_payment": [
+        r"(?i)minimum\s+payment\s+([\d,]+\.\d{2})",
+        r"MINIMUM AMOUNT DUE[\sA-Z]*([0-9][0-9,]*\.\d{2})"]
 }
 
 # 2) NEW: Markdown-like table row matcher for the data row (4 cells).
@@ -215,10 +221,17 @@ def extract_fields(text: str) -> dict:
     # First try the brute-force method
     b = {}
     none_count = 0
-    for key, pattern in PATTERNS.items():
-        match = re.search(pattern, text)
-        b[key] = match.group(1) if match else None
-        if b[key] is None:
+    
+    for key, patterns in PATTERNS.items():
+        value = None
+        # Try each pattern until something matches
+        for pattern in patterns:
+            m = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            if m:
+                value = m.group(1)
+                break  # stop at first valid match
+        b[key] = value
+        if value is None:
             none_count += 1
     
     if none_count == 0:
@@ -261,7 +274,9 @@ def extract_fields(text: str) -> dict:
 def extract_bill_fields(encrypted_pdf: str, password: str, lang: str = "eng") -> Dict[str, Optional[str]]:
     dec_path = decrypt_to_temp(encrypted_pdf, password)
     text = get_text_from_pdf(dec_path, lang=lang)
+    print(text)
     out = extract_fields(text)
+    print(out)
     # Clean up decrypted temp file
     try:
         shutil.move(dec_path, encrypted_pdf)

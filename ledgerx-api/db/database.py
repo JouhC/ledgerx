@@ -199,6 +199,31 @@ def insert_or_update_last_run(item):
             ))
             conn.commit()
 
+def add_bill_source(item: dict):
+    with sqlite3.connect(settings.DB_PATH) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+        INSERT INTO bill_sources (name, provider, gmail_query, sender_email, subject_like,
+                                  include_kw, exclude_kw, drive_folder_id, file_pattern,
+                                  currency, password_env, category, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            item.get("name"),
+            item.get("provider"),
+            item.get("gmail_query"),
+            item.get("sender_email"),
+            item.get("subject_like"),
+            item.get("include_kw"),
+            item.get("exclude_kw"),
+            item.get("drive_folder_id"),
+            item.get("file_pattern"),
+            item.get("currency", "PHP"),
+            item.get("password_env"),
+            item.get("category", "uncategorized"),
+            1
+        ))
+        conn.commit()
+
 def main():
     db_init()
 
