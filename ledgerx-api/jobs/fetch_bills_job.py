@@ -1,6 +1,7 @@
 from integrations.gmail_service import extract_bills
 from db.database import get_bill_sources, insert_or_update_last_run, get_last_run, db_insert_bill, bill_exists
-from utils.bill_parser_v2 import extract_bill_fields
+from utils.bill_preprocessing import extract_bill_fields
+from utils.field_extractor import load_model
 from core.config import settings
 from datetime import datetime, timedelta
 
@@ -38,11 +39,12 @@ def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
 CONCURRENCY_PER_BILL = 4   # tune: start with 4-8 for mixed IO/CPU
 CONCURRENCY_PER_SOURCE = 2 # if sources fetch from network/drive
 LANG = "eng"
+tokenizer, model = load_model()
 
 @retry()
-async def extract_bill_fields_async(path: str, password: str) -> Optional[Dict[str, Any]]:
+async def extract_bill_fields_async(path: str, password: str, useful_page: List) -> Optional[Dict[str, Any]]:
     # wrap the blocking/CPU work (OCR/regex/PDF) off the event loop
-    return await run_blocking(extract_bill_fields, path, password=password, lang=LANG)
+    return await run_blocking(extract_bill_fields, path, password=password, lang=LANG, useful_page=useful_page, model=model, tokenizer=tokenizer)
 
 async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
     async with sem:
@@ -52,7 +54,7 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
             print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
             return
 
-        bill_data = await extract_bill_fields_async(value["bills_path"], password=value["password"])
+        bill_data = await extract_bill_fields_async(value["bills_path"], password=value["password"], useful_page=value["useful_page"])
         if not bill_data:
             print(f"⚠️ No fields extracted for {value['bills_path']}")
             # still write a last_run with success=0 to avoid infinite retries spiking?
@@ -115,6 +117,7 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
             "start_time": _now(),
             "label": f"{source['name']} {idx}",
             "category": source.get("category", "uncategorized"),
+            "useful_page": source.get("useful_page", [1])
         }
         tasks.append(asyncio.create_task(process_single_bill(value, bill_sem)))
 

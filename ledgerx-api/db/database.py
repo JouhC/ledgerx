@@ -23,7 +23,9 @@ def db_init():
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             paid_at TEXT,
             category TEXT,
-            notes TEXT
+            notes TEXT,
+                     
+            UNIQUE(name, due_date)
         )""")
 
         cur.executescript("""
@@ -42,6 +44,7 @@ def db_init():
             currency        TEXT DEFAULT 'PHP',
             password_env    TEXT,
             category        TEXT DEFAULT 'uncategorized',
+            useful_page     TEXT ARRAY,
             active          INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -119,7 +122,7 @@ def bill_exists(item: dict) -> bool:
 def db_insert_bill(item: dict):
     with sqlite3.connect(settings.DB_PATH) as conn:
         conn.execute("""
-        INSERT INTO bills (name, due_date, sent_date, amount, currency, status, source_email_id,
+        INSERT OR IGNORE INTO bills (name, due_date, sent_date, amount, currency, status, source_email_id,
                            drive_file_id, drive_file_name, paid_at, category, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -132,7 +135,7 @@ def db_insert_bill(item: dict):
             item.get("source_email_id"),
             item.get("drive_file_id"),
             item.get("drive_file_name"),
-            item.get("status","unpaid") == "paid" and datetime.utcnow().isoformat() or None,
+            item.get("status","unpaid") == "paid" and datetime.now(datetime.timezone.utc).isoformat() or None,
             item.get("category", "uncategorized"),
             item.get("notes", "none"),
         ))
@@ -153,7 +156,7 @@ def get_bill_sources():
 def db_mark_paid(bill_id: int):
     with sqlite3.connect(settings.DB_PATH) as conn:
         conn.execute("UPDATE bills SET status='paid', paid_at=? WHERE id=? AND status!='paid'",
-                     (datetime.utcnow().isoformat(), bill_id))
+                     (datetime.now(datetime.timezone.utc).isoformat(), bill_id))
         conn.commit()
 
 def get_last_run(name):
@@ -220,6 +223,7 @@ def add_bill_source(item: dict):
             item.get("currency", "PHP"),
             item.get("password_env"),
             item.get("category", "uncategorized"),
+            item.get("useful_page", [1]),
             1
         ))
         conn.commit()

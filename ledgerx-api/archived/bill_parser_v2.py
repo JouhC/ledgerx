@@ -288,7 +288,7 @@ def extract_bill_fields(encrypted_pdf: str, password: str, lang: str = "eng") ->
     return out
 
 def main():
-    result = extract_bill_fields("./gmail_attachments_poc/20250914.pdf", password="20Oct1997814614", lang="eng")
+    result = extract_bill_fields("../temp_attachments/BPI Rewards - February 2026.pdf", password="19971020", lang="eng")
     #print(result)
 
 if __name__ == "__main__":

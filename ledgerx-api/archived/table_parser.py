@@ -3,15 +3,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 HEADER_ANY_ORDER = re.compile(
-    r"""(?isx)
-    ^(?=.*\bCUSTOMER\s+NUMBER\b)
-     (?=.*\bSTATEMENT\s+DATE\b)
-     (?=.*\bCREDIT\s+LIMIT\b)
-     (?=.*\bTOTAL\s+AMOUNT\s+DUE\b)
-     (?=.*\bMINIMUM\s+AMOUNT\s+DUE\b)
-     (?=.*\bPAYMENT\s+DUE\s+DATE\b)
-    .+$
-    """
+    r"""(?i)(?=.*\bCUSTOMER\s+NUMBER\b)(?=.*\bSTATEMENT\s+DATE\b)(?=.*\bCREDIT\s+LIMIT\b)(?=.*\bTOTAL\s+AMOUNT\s+DUE\b)(?=.*\bMINIMUM\s+AMOUNT\s+DUE\b)(?=.*\bPAYMENT\s+DUE\s+DATE\b)"""
 )
 
 CUSTOMER_NO   = re.compile(r"\b\d{2,}(?:-\d+){3,}\b")
