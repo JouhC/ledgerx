@@ -1,8 +1,7 @@
 import re
 from datetime import datetime
 from typing import Dict, List, Optional
-from utils.bill_preprocessing import parse_date, parse_money, decrypt_to_temp, get_text_from_pdf
-import shutil
+from utils.bill_utils import parse_date, parse_money
 
 
 HEADER_ANY_ORDER = re.compile(
@@ -37,7 +36,7 @@ PATTERNS = {
         r"(?i)minimum\s+payment\s+([\d,]+\.\d{2})",
         r"MINIMUM AMOUNT DUE[\sA-Z]*([0-9][0-9,]*\.\d{2})"],
     "credit_limit": [
-        r"CREDIT\s+LIMIT[\s\S]{0,50}?PHP[\s\S]{0,20}?([0-9][0-9,]*\.\d{2})",
+        r"CREDIT\s+LIMIT[\s\S]{0,50}?(?:PHP\s*)?([\d,]+\.\d{2})",
     ],
 }
 
@@ -169,6 +168,8 @@ def extract_fields(text: str) -> dict:
         b[key] = value
         if value is None:
             none_count += 1
+
+    print(text)
     
     required_fields = ["total_balance", "due_date", "min_payment"]
     
@@ -207,18 +208,6 @@ def extract_fields(text: str) -> dict:
     raise ValueError("Could not match either strict sequence or table-row layout. Inspect OCR text and adjust patterns.")
 
 
-def pattern_extract_bill_fields(encrypted_pdf: str, password: str, lang: str = "eng") -> Dict[str, Optional[str]]:
-    dec_path = decrypt_to_temp(encrypted_pdf, password)
-    text = get_text_from_pdf(dec_path, lang=lang)
-    print(text)
-    out = extract_fields(text)
-    print(out)
-    # Clean up decrypted temp file
-    try:
-        shutil.move(dec_path, encrypted_pdf)
-        # Ensure tempfile is gone
-        if dec_path.exists():
-            dec_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+def pattern_field_extraction(ocr_text: str) -> Dict[str, Optional[str]]:
+    out = extract_fields(ocr_text)
     return out

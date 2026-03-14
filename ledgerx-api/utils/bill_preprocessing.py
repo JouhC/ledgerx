@@ -6,121 +6,20 @@ from docling.datamodel.pipeline_options import (
     TesseractCliOcrOptions,
 )
 from utils.field_extractor import run_extraction
+from utils.pattern_field_extractor import pattern_field_extraction
+from utils.deterministic_validator import deterministic_validator
+from utils.bill_utils import parse_date, parse_money
 from pathlib import Path
 from typing import Any, Dict, Optional
 import html
 import pikepdf
 import re
 import tempfile
-import shutil
 from pathlib import Path
 from typing import Optional, Sequence
 import tempfile
 import pikepdf
-from decimal import Decimal, ROUND_HALF_EVEN, InvalidOperation
-import unicodedata
-from datetime import datetime
 
-# -------------------------------
-# Parsing logic (Due Date & Amount)
-# -------------------------------
-MONTH = r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
-DATE_LONG = rf"{MONTH}\s+\d{{1,2}},\s+\d{{4}}"   # e.g., August 28, 2025
-DATE_DMY  = r"\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{4}"  # 06 Oct 2025
-DATE_ANY  = rf"(?:{DATE_LONG}|{DATE_DMY})"
-
-MONEY_CORE = r"\d{1,3}(?:,\d{3})*(?:\.\d{2})?"
-MONEY = rf"(?:[\(]?\s*(?:₱|P)?\s*{MONEY_CORE}\s*[\)]?)"  # optional ₱/P, parentheses
-_MONEY_RE = re.compile(
-    r"""
-    ^\s*
-    (?P<sign>[-+])?
-    \s*
-    (?P<cur>(?:₱|[Pp]))?   # optional currency
-    \s*
-    (?P<num>\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?
-    \s*
-    (?P<suf>CR|DR)?        # optional CR/DR
-    \s*$
-    """,
-    re.VERBOSE
-)
-
-DATE_FORMATS = [
-    "%Y-%m-%d",          # 2026-02-18
-    "%B %d, %Y",         # January 28, 2026
-    "%b %d, %Y",         # Jan 28, 2026
-    "%m/%d/%Y",          # 02/18/2026
-    "%d %B %Y",          # 18 February 2026
-    "%d %b %Y",          # 18 Feb 2026
-]
-
-def parse_date(text: str):
-    for fmt in DATE_FORMATS:
-        try:
-            return datetime.strptime(text.strip(), fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            print(f"Date '{text}' does not match format '{fmt}'")
-            pass
-    raise ValueError(f"Unrecognized date format: {text}")
-
-def parse_money(s: str, *, return_cents: bool = False):
-    """
-    Parse a money string to Decimal (default) or integer cents.
-
-    Examples handled:
-      '₱ 13,927.33', '13,927.33CR', '(13,927.33)', 'P1,000', '-850', '850.0'
-    Returns None on empty/invalid input.
-    """
-    if s is None or s == "":
-        return None
-
-    if isinstance(s, Decimal):
-        q = s
-        q = q.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-        return int((q * 100).to_integral_value(rounding=ROUND_HALF_EVEN)) if return_cents else q
-
-    if isinstance(s, int):
-        q = Decimal(s).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-        return int((q * 100).to_integral_value(rounding=ROUND_HALF_EVEN)) if return_cents else q
-
-    if isinstance(s, float):
-        q = Decimal(str(s)).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-        return int((q * 100).to_integral_value(rounding=ROUND_HALF_EVEN)) if return_cents else q
-
-    s = str(s).strip()
-    s = unicodedata.normalize("NFKC", s)
-
-    paren_neg = s.startswith("(") and s.endswith(")")
-    if paren_neg:
-        s = s[1:-1].strip()
-
-    m = _MONEY_RE.match(s)
-    if not m:
-        return None
-
-    sign = m.group("sign") or ""
-    num = m.group("num").replace(",", "")
-    suf = (m.group("suf") or "").upper()
-    frac = m.group(4)
-
-    try:
-        q = Decimal(num + (("." + frac) if frac else ""))
-    except InvalidOperation:
-        return None
-
-    is_credit_negative = (suf == "CR")
-    is_debit_positive = (suf == "DR")
-    negative = paren_neg or (sign == "-") or is_credit_negative
-
-    if negative and not is_debit_positive:
-        q = -q
-
-    q = q.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-
-    if return_cents:
-        return int((q * 100).to_integral_value(rounding=ROUND_HALF_EVEN))
-    return q
 
 # -------------------------------
 # Helpers: decrypt + preprocessing
@@ -291,22 +190,8 @@ def preprocess_statement_text(raw_text: str) -> str:
     return "\n".join(cleaned)
 
 
-def extract_bill_fields(
-        encrypted_pdf: str, 
-        password: str, lang: str = "eng", 
-        useful_page: list[int] = [1], 
-        model: Optional[Any] = None, 
-        tokenizer: Optional[Any] = None) -> Dict[str, Optional[str]]:
-    
-    dec_path = decrypt_to_temp(encrypted_pdf, password, useful_page)
-    text = get_text_from_pdf(dec_path, lang=lang)
-    pre_processed_text = preprocess_statement_text(text)
-    print(pre_processed_text)
-
-    out = run_extraction(pre_processed_text, tokenizer=tokenizer, model=model)
-
-    print(out)
-
+def _wrapper_field_extraction(ocr_text: str, tokenizer: Any, model: Any) -> Dict[str, Optional[str]]:
+    out = run_extraction(ocr_text, tokenizer=tokenizer, model=model)
     validated = out.get("validated", None)
     if not validated:
         raise ValueError("Extraction failed validation checks. Output may be unreliable.")
@@ -322,15 +207,72 @@ def extract_bill_fields(
         validated["total_amount_due"] = validated["credit_limit"]
         validated["credit_limit"] = limit
 
-    # Clean up decrypted temp file
-    try:
-        shutil.move(dec_path, encrypted_pdf)
-        # Ensure tempfile is gone
-        if dec_path.exists():
-            dec_path.unlink(missing_ok=True)
-    except Exception:
-        pass
     return validated
+
+
+def _wrapper_field_extraction(ocr_text: str, tokenizer: Any, model: Any) -> Dict[str, Optional[str]]:
+    out = run_extraction(ocr_text, tokenizer=tokenizer, model=model)
+    validated = out.get("validated", None)
+    if not validated:
+        raise ValueError("Extraction failed validation checks. Output may be unreliable.")
+   
+    validated["total_amount_due"] = parse_money(validated.get("total_amount_due"))
+    validated["minimum_amount_due"] = parse_money(validated.get("minimum_amount_due"))
+    validated["credit_limit"] = parse_money(validated.get("credit_limit"))
+    validated["payment_due_date"] = parse_date(validated["payment_due_date"])
+    validated["statement_date"] = parse_date(validated["statement_date"])
+
+    if validated["total_amount_due"] > validated["credit_limit"]:
+        limit = validated["total_amount_due"]
+        validated["total_amount_due"] = validated["credit_limit"]
+        validated["credit_limit"] = limit
+
+    return validated
+
+
+def extract_bill_fields(
+    encrypted_pdf: str,
+    password: str,
+    lang: str = "eng",
+    useful_page: Optional[list[int]] = None,
+    model: Optional[Any] = None,
+    tokenizer: Optional[Any] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+
+    if useful_page is None:
+        useful_page = [1]
+
+    dec_path = None
+
+    try:
+        dec_path = Path(decrypt_to_temp(encrypted_pdf, password, useful_page))
+
+        text = get_text_from_pdf(str(dec_path), lang=lang)
+        pre_processed_text = preprocess_statement_text(text)
+
+        if debug:
+            print(pre_processed_text)
+
+        slm_output = _wrapper_field_extraction(
+            pre_processed_text,
+            tokenizer=tokenizer,
+            model=model
+        )
+        pattern_output = pattern_field_extraction(pre_processed_text)
+
+        print("SLM Output:", slm_output)
+        print("Pattern Output:", pattern_output)
+
+        final_output = deterministic_validator(slm_output, pattern_output)
+        return final_output
+
+    finally:
+        if dec_path is not None and dec_path.exists():
+            try:
+                dec_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     pass
