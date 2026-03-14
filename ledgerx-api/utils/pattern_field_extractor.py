@@ -71,7 +71,8 @@ def extract_after_header(text: str, max_lines: int = 12) -> Dict[str, str]:
             hdr_idx = i
             break
     if hdr_idx is None:
-        raise ValueError("Header not found (any order).")
+        print("Header not found (any order).")
+        return None
 
     # 2) collect a generous block AFTER header (do NOT stop on blank lines)
     stop_markers = ("| Previous", "## ")
@@ -205,7 +206,17 @@ def extract_fields(text: str) -> dict:
         m["payment_due_date"] = parse_date(m["payment_due_date"])
         return m
 
-    raise ValueError("Could not match either strict sequence or table-row layout. Inspect OCR text and adjust patterns.")
+    print("Could not match either strict sequence or table-row layout. Inspect OCR text and adjust patterns.")
+
+    return{
+        "customer_number": None,
+        "statement_date": None,
+        "credit_limit": None,
+        "total_amount_due": None,
+        "minimum_amount_due": None,
+        "payment_due_date": None,
+        "source_layout": None
+    }
 
 
 def pattern_field_extraction(ocr_text: str) -> Dict[str, Optional[str]]:

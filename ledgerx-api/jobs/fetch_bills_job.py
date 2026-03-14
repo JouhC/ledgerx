@@ -42,9 +42,9 @@ LANG = "eng"
 tokenizer, model = load_model()
 
 @retry()
-async def extract_bill_fields_async(path: str, password: str, useful_page: List) -> Optional[Dict[str, Any]]:
+async def extract_bill_fields_async(value: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     # wrap the blocking/CPU work (OCR/regex/PDF) off the event loop
-    return await run_blocking(extract_bill_fields, path, password=password, lang=LANG, useful_page=useful_page, model=model, tokenizer=tokenizer)
+    return await run_blocking(extract_bill_fields, value, model=model, tokenizer=tokenizer)
 
 async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
     async with sem:
@@ -54,7 +54,7 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
             print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
             return
 
-        bill_data = await extract_bill_fields_async(value["bills_path"], password=value["password"], useful_page=value["useful_page"])
+        bill_data = await extract_bill_fields_async(value)
         if not bill_data:
             print(f"⚠️ No fields extracted for {value['bills_path']}")
             # still write a last_run with success=0 to avoid infinite retries spiking?
