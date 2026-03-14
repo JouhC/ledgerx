@@ -5,7 +5,7 @@ from typing import Any
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 def load_model(model_name: str = MODEL_NAME):
@@ -29,30 +29,52 @@ def build_messages(ocr_text: str):
         {
             "role": "system",
             "content": (
-                "You are an information extraction model for financial statements. "
-                "Extract only values that are explicitly present in the OCR text. "
-                "Do not invent values. "
-                "If a field is missing or unreadable, return null. "
-                "Return JSON only."
+                "You are an information extraction system for financial statements.\n"
+                "Extract only values explicitly present in the OCR text.\n"
+                "Do not invent, infer, calculate, or modify values.\n"
+                "Return exactly one JSON object and nothing else.\n"
             ),
         },
         {
             "role": "user",
             "content": (
-                "Extract these fields from the OCR text and return JSON only:\n"
-                "{\n"
-                '  "statement_date": null,\n'
-                '  "customer_number": null,\n'
-                '  "credit_limit": null,\n'
-                '  "total_amount_due": null,\n'
-                '  "minimum_amount_due": null,\n'
-                '  "payment_due_date": null\n'
-                "}\n\n"
+                "Extract these fields:\n"
+                "- statement_date\n"
+                "- customer_number\n"
+                "- credit_limit\n"
+                "- total_amount_due\n"
+                "- minimum_amount_due\n"
+                "- payment_due_date\n\n"
+
                 "Rules:\n"
-                "- Preserve customer_number exactly as seen.\n"
+                "- Map values to the headers CUSTOMER NUMBER, STATEMENT DATE, PAYMENT DUE DATE, CREDIT LIMIT, TOTAL AMOUNT DUE, and MINIMUM AMOUNT DUE.\n"
+                "- Prefer values on the same line as the headers or immediately below them.\n"
+                "- If values appear multiple times, choose the one nearest the header row.\n"
+                "- Preserve customer_number exactly as written.\n"
                 "- Normalize dates to YYYY-MM-DD when possible.\n"
-                "- Normalize amounts to plain numbers without currency symbols or commas when possible.\n"
-                "- Return valid JSON only.\n\n"
+                "- Money values must be JSON numbers.\n"
+                "- Remove commas and currency symbols from money values.\n"
+                "- Set a field to null only if that specific field is missing from the OCR text.\n"
+                "- Do not output all null values if some fields are clearly present.\n"
+                "- Output exactly one valid JSON object with these keys in this exact order:\n"
+                '  "statement_date", "customer_number", "credit_limit", "total_amount_due", "minimum_amount_due", "payment_due_date"\n\n'
+
+                "Example:\n"
+                "OCR text:\n"
+                "CUSTOMER NUMBER STATEMENT DATE PAYMENT DUE DATE CREDIT LIMIT TOTAL AMOUNT DUE MINIMUM AMOUNT DUE\n"
+                "020100-4-10-7956071 JANUARY 28, 2026 FEBRUARY 18, 2026 314,000.00 20,958.15\n"
+                "850.00\n\n"
+
+                "Output:\n"
+                "{\n"
+                '  "statement_date": "2026-01-28",\n'
+                '  "customer_number": "020100-4-10-7956071",\n'
+                '  "credit_limit": 314000.0,\n'
+                '  "total_amount_due": 20958.15,\n'
+                '  "minimum_amount_due": 850.0,\n'
+                '  "payment_due_date": "2026-02-18"\n'
+                "}\n\n"
+
                 f"OCR text:\n{ocr_text}"
             ),
         },
@@ -120,10 +142,10 @@ def run_extraction(ocr_text: str, tokenizer, model) -> dict[str, Any]:
     with torch.inference_mode():
         output_ids = model.generate(
             **inputs,
-            max_new_tokens=256,
+            max_new_tokens=300,
             do_sample=False,
-            temperature=None,
-            top_p=None,
+            temperature=0.0,
+            top_p=1.0,
         )
 
     generated_ids = output_ids[0][inputs["input_ids"].shape[1]:]
