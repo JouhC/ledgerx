@@ -261,9 +261,6 @@ def extract_bill_fields(
         )
         pattern_output = pattern_field_extraction(pre_processed_text)
 
-        print("SLM Output:", slm_output)
-        print("Pattern Output:", pattern_output)
-
         final_output = deterministic_validator(slm_output, pattern_output)
         return final_output
 

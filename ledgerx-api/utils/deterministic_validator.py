@@ -24,13 +24,14 @@ def deterministic_validator(
             else:
                 print(f"Conflict in field '{field}': SLM='{s}' vs Pattern='{p}'. Choosing SLM value.")
                 if field in ["payment_due_date", "credit_limit"]:
-                
+                    print(type(s), type(p))
+
                     orig_s = s
                     orig_p = p
     
                     s = datetime.strptime(s, "%Y-%m-%d") if isinstance(s, str) else s
                     p = datetime.strptime(p, "%Y-%m-%d") if isinstance(p, str) else p
-                    print(type(s), type(p))
+                    
                     if p > s:
                         result[field] = orig_p
                     elif s > p:

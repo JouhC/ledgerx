@@ -169,7 +169,6 @@ def extract_fields(text: str) -> dict:
         if value is None:
             none_count += 1
 
-    print(text)
     
     required_fields = ["total_balance", "due_date", "min_payment"]
     
@@ -191,7 +190,7 @@ def extract_fields(text: str) -> dict:
         return {
             "customer_number": None,  # not present in this layout
             "statement_date": None,   # not present in this layout
-            "credit_limit": None,     # not present in this layout
+            "credit_limit": parse_money(d["credit_limit"]) if d.get("credit_limit") else None,
             "total_amount_due": parse_money(d["total_due"]),
             "minimum_amount_due": parse_money(d["min_due"]),
             "payment_due_date": parse_date(d["payment_due"]),
@@ -200,6 +199,7 @@ def extract_fields(text: str) -> dict:
     
     m = extract_after_header(text)
     if m:
+        m["credit_limit"] = parse_money(m.get("credit_limit")) if m.get("credit_limit") else None
         m["total_amount_due"] = parse_money(m.get("total_amount_due"))
         m["minimum_amount_due"] = parse_money(m.get("minimum_amount_due"))
         m["payment_due_date"] = parse_date(m["payment_due_date"])

@@ -124,6 +124,7 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
     if tasks:
         await asyncio.gather(*tasks)
 
+
 async def run_fetch_all_async():
     try:
         sources = await asyncio.to_thread(get_bill_sources)
