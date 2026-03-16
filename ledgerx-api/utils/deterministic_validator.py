@@ -1,14 +1,15 @@
-from typing import Any, Dict
-from datetime import datetime
+from typing import Any, Dict, List
+from datetime import datetime, timedelta
 
 def deterministic_validator(
     slm_output: Dict[str, Any],
-    pattern_output: Dict[str, Any]
+    pattern_output: Dict[str, Any],
+    required_fields: List[str]
 ) -> Dict[str, Any]:
     critical_fields = ["total_amount_due", "payment_due_date", "minimum_amount_due", "credit_limit"]
     result = {}
 
-    for field in set(slm_output) | set(pattern_output):
+    for field in required_fields:
         s = slm_output.get(field)
         p = pattern_output.get(field)
         
@@ -33,8 +34,20 @@ def deterministic_validator(
                     p = datetime.strptime(p, "%Y-%m-%d") if isinstance(p, str) else p
                     
                     if p > s:
+                        if field == "payment_due_date":
+                            statement_date = datetime.strptime(result["statement_date"], "%Y-%m-%d") if isinstance(result["statement_date"], str) else result["statement_date"]
+                            if p - statement_date > timedelta(30):
+                                result[field] = orig_s
+                                continue
+
                         result[field] = orig_p
                     elif s > p:
+                        if field == "payment_due_date":
+                            statement_date = datetime.strptime(result["statement_date"], "%Y-%m-%d") if isinstance(result["statement_date"], str) else result["statement_date"]
+                            if s - statement_date > timedelta(30):
+                                result[field] = orig_p
+                                continue
+
                         result[field] = orig_s
                     else:
                         result[field] = orig_s

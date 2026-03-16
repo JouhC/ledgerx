@@ -10,7 +10,7 @@ from utils.pattern_field_extractor import pattern_field_extraction
 from utils.deterministic_validator import deterministic_validator
 from utils.bill_utils import parse_date, parse_money
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import html
 import pikepdf
 import re
@@ -169,6 +169,7 @@ def _wrapper_field_extraction(ocr_text: str, tokenizer: Any, model: Any) -> Dict
 
 def extract_bill_fields(
     value: Dict[str, Any],
+    required_fields: List[str],
     lang: str = "eng",
     model: Optional[Any] = None,
     tokenizer: Optional[Any] = None,
@@ -193,7 +194,7 @@ def extract_bill_fields(
         )
         pattern_output = pattern_field_extraction(pre_processed_text)
 
-        final_output = deterministic_validator(slm_output, pattern_output)
+        final_output = deterministic_validator(slm_output, pattern_output, required_fields)
         return final_output
 
     finally:

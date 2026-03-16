@@ -40,13 +40,14 @@ CONCURRENCY_PER_BILL = 4   # tune: start with 4-8 for mixed IO/CPU
 CONCURRENCY_PER_SOURCE = 2 # if sources fetch from network/drive
 LANG = "eng"
 tokenizer, model = load_model()
+required_fields = settings.REQUIRED_FIELDS
 
 @retry()
-async def extract_bill_fields_async(value: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def extract_bill_fields_async(value: Dict[str, Any], required_fields: List[str]) -> Optional[Dict[str, Any]]:
     # wrap the blocking/CPU work (OCR/regex/PDF) off the event loop
-    return await run_blocking(extract_bill_fields, value, model=model, tokenizer=tokenizer)
+    return await run_blocking(extract_bill_fields, value, required_fields, model=model, tokenizer=tokenizer)
 
-async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
+async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore, required_fields: List[str] = settings.REQUIRED_FIELDS):
     async with sem:
         # quick existence check first to avoid wasted OCR
         exists = await run_blocking(bill_exists, value)
@@ -54,7 +55,7 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore):
             print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
             return
 
-        bill_data = await extract_bill_fields_async(value)
+        bill_data = await extract_bill_fields_async(value, required_fields)
         if not bill_data:
             print(f"⚠️ No fields extracted for {value['bills_path']}")
             # still write a last_run with success=0 to avoid infinite retries spiking?

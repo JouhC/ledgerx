@@ -176,7 +176,7 @@ def extract_fields(text: str) -> dict:
     if all(b[f] is not None for f in required_fields):
         return {
             "customer_number": None,  # not present in this layout
-            "statement_date": None,   # not present in this layout
+            "statement_date": parse_date(b["statement_date"]) if b.get("statement_date") else None,
             "credit_limit": parse_money(b["credit_limit"]) if b.get("credit_limit") else None,
             "total_amount_due": parse_money(b["total_balance"]),
             "minimum_amount_due": parse_money(b["min_payment"]),
@@ -190,7 +190,7 @@ def extract_fields(text: str) -> dict:
         d = t.groupdict()
         return {
             "customer_number": None,  # not present in this layout
-            "statement_date": None,   # not present in this layout
+            "statement_date": parse_date(b["statement_date"]) if b.get("statement_date") else None,
             "credit_limit": parse_money(d["credit_limit"]) if d.get("credit_limit") else None,
             "total_amount_due": parse_money(d["total_due"]),
             "minimum_amount_due": parse_money(d["min_due"]),
@@ -204,6 +204,7 @@ def extract_fields(text: str) -> dict:
         m["total_amount_due"] = parse_money(m.get("total_amount_due"))
         m["minimum_amount_due"] = parse_money(m.get("minimum_amount_due"))
         m["payment_due_date"] = parse_date(m["payment_due_date"])
+        m["statement_date"] = parse_date(b["statement_date"]) if b.get("statement_date") else None
         return m
 
     print("Could not match either strict sequence or table-row layout. Inspect OCR text and adjust patterns.")

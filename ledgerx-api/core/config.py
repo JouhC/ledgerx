@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     API_PREFIX: str = "/api/v1"
 
+    REQUIRED_FIELDS: list[str] = ["customer_number", "statement_date", "credit_limit", "total_amount_due", "minimum_amount_due", "payment_due_date"] 
+
     # --- computed helpers ---
     @property
     def credentials_desktop_oauth(self) -> dict:
