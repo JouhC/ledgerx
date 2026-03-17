@@ -24,9 +24,13 @@ def db_init():
                 CREATE TABLE IF NOT EXISTS bills (
                     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                     name TEXT,
+                    customer_number TEXT,
+                    statement_date TEXT,
                     due_date TEXT,
                     sent_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    amount TEXT,
+                    credit_limit TEXT,
+                    total_amount_due TEXT,
+                    minimum_amount_due TEXT,
                     currency TEXT DEFAULT 'PHP',
                     status TEXT DEFAULT 'unpaid',
                     source_email_id TEXT,
@@ -177,17 +181,23 @@ def db_insert_bill(item: dict):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO bills (
-                    name, due_date, sent_date, amount, currency, status,
+                    name, customer_number, statement_date,
+                    due_date, sent_date, credit_limit, total_amount_due, 
+                    minimum_amount_due, currency, status,
                     source_email_id, drive_file_id, drive_file_name,
                     paid_at, category, notes
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (name, sent_date) DO NOTHING
             """, (
                 item.get("name"),
+                item.get("customer_number"),
+                item.get("statement_date"),
                 item.get("due_date"),
                 item.get("sent_date"),
-                item.get("amount"),
+                item.get("credit_limit"),
+                item.get("total_amount_due"),
+                item.get("minimum_amount_due"),                
                 item.get("currency", "PHP"),
                 item.get("status", "unpaid"),
                 item.get("source_email_id"),

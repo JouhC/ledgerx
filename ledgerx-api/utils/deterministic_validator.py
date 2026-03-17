@@ -23,8 +23,8 @@ def deterministic_validator(
             elif p == s:
                 result[field] = p
             else:
-                print(f"Conflict in field '{field}': SLM='{s}' vs Pattern='{p}'. Choosing SLM value.")
-                if field in ["payment_due_date", "credit_limit"]:
+                print(f"Conflict in field '{field}': SLM='{s}' vs Pattern='{p}'. Choosing Pattern value.")
+                if field in ["payment_due_date"]:
                     print(type(s), type(p))
 
                     orig_s = s
@@ -52,7 +52,7 @@ def deterministic_validator(
                     else:
                         result[field] = orig_s
                 else:
-                    result[field] = s
+                    result[field] = p
 
         else:
             result[field] = p if p is not None else s

@@ -76,9 +76,13 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
             # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
             record = {
                 "name": value["name"],
+                "customer_number": bill_data.get("customer_number"),
+                "statement_date": bill_data.get("statement_date"),
                 "due_date": bill_data.get("payment_due_date"),
                 "sent_date": value["sent_date"],
-                "amount": str(bill_data.get("total_amount_due")),
+                "credit_limit": str(bill_data.get("credit_limit")),
+                "total_amount_due": str(bill_data.get("total_amount_due")),
+                "minimum_amount_due": str(bill_data.get("minimum_amount_due")),
                 "currency": "PHP",
                 "status": "unpaid",
                 "source_email_id": value["message_id"],
@@ -96,7 +100,7 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
         
         except Exception as e:
             print(f"Error processing bill {value['bills_path']}: {e}")
-            
+
         finally:
             if dec_path is not None and dec_path.exists():
                 try:
