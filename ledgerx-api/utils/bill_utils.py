@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_EVEN, InvalidOperation
 import unicodedata
 from datetime import datetime
 import re
+from zoneinfo import ZoneInfo
 
 # -------------------------------
 # Parsing logic (Due Date & Amount)
@@ -103,3 +104,13 @@ def parse_money(s: str, *, return_cents: bool = False):
     if return_cents:
         return int((q * 100).to_integral_value(rounding=ROUND_HALF_EVEN))
     return q
+
+
+def get_ph_time(from_datatime: str = None):
+    if from_datatime:
+        dt = datetime.fromisoformat(from_datatime)
+        return dt.astimezone(ZoneInfo("Asia/Manila"))
+    
+    ph_time = datetime.now(ZoneInfo("Asia/Manila"))
+    return ph_time
+    

@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 
@@ -7,12 +6,14 @@ from psycopg.rows import dict_row
 
 from core.config import settings
 from utils.password_crypto import encrypt_password
+from utils.bill_utils import get_ph_time
 
 
 def get_conn():
     return psycopg.connect(
         settings.DATABASE_URL,
-        row_factory=dict_row
+        row_factory=dict_row,
+        options="-c timezone=Asia/Manila"
     )
 
 
@@ -192,7 +193,7 @@ def db_insert_bill(item: dict):
                 item.get("source_email_id"),
                 item.get("drive_file_id"),
                 item.get("drive_file_name"),
-                datetime.now(timezone.utc) if item.get("status", "unpaid") == "paid" else None,
+                get_ph_time() if item.get("status", "unpaid") == "paid" else None,
                 item.get("category", "uncategorized"),
                 item.get("notes", ""),
             ))
@@ -240,7 +241,7 @@ def db_mark_paid(bill_id: int):
                     paid_at = %s
                 WHERE id = %s
                   AND status <> 'paid'
-            """, (datetime.now(timezone.utc), bill_id))
+            """, (get_ph_time(), bill_id))
 
 
 def get_last_run(name: str):
@@ -280,7 +281,7 @@ def insert_or_update_last_run(item: dict):
                 item.get("success", False),
                 item.get("duration_sec"),
                 item.get("notes", "none"),
-                datetime.now(timezone.utc),
+                get_ph_time(),
             ))
 
 

@@ -197,13 +197,10 @@ def extract_bill_fields(
 
         final_output = deterministic_validator(slm_output, pattern_output, required_fields)
         return final_output, dec_path
-
-    finally:
-        if dec_path is not None and dec_path.exists():
-            try:
-                dec_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+    
+    except Exception as e:
+        print(f"Error in extract_bill_fields: {e}")
+        raise
 
 if __name__ == "__main__":
     pass

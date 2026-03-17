@@ -7,6 +7,7 @@ import os
 import re
 from googleapiclient.errors import HttpError
 from datetime import datetime
+from utils.bill_utils import get_ph_time
 
 def build_gmail_service():
     creds = None
@@ -42,6 +43,7 @@ def iter_pdf_attachments(msg):
     if sent_ts:
         try:
             sent_date = datetime.fromtimestamp(int(sent_ts) / 1000)
+            sent_date = get_ph_time(from_datatime=sent_date.isoformat())  # convert to PH timezone
         except Exception:
             pass
 

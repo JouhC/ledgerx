@@ -53,45 +53,56 @@ async def extract_bill_fields_async(value: Dict[str, Any], required_fields: List
 
 async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], sem: asyncio.Semaphore, required_fields: List[str] = settings.REQUIRED_FIELDS):
     async with sem:
-        # quick existence check first to avoid wasted OCR
-        exists = await run_blocking(bill_exists, value)
-        if exists:
-            print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
-            return
+        try:
+            # quick existence check first to avoid wasted OCR
+            exists = await run_blocking(bill_exists, value)
+            if exists:
+                print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
+                return
 
-        bill_data, dec_path = await extract_bill_fields_async(value, required_fields)
-        if not bill_data:
-            print(f"⚠️ No fields extracted for {value['bills_path']}")
-            # still write a last_run with success=0 to avoid infinite retries spiking?
+            bill_data, dec_path = await extract_bill_fields_async(value, required_fields)
+            if not bill_data:
+                print(f"⚠️ No fields extracted for {value['bills_path']}")
+                # still write a last_run with success=0 to avoid infinite retries spiking?
+                await run_blocking(insert_or_update_last_run, {
+                    "name": value["name"],
+                    "success": False,
+                    "duration_sec": (_now() - value["start_time"]).total_seconds()
+                })
+                return
+            
+            drive_file_id = await upload_pdf(dec_path, folders["subfolders"][value["name"]], f"{value['outname']}")
+
+            # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
+            record = {
+                "name": value["name"],
+                "due_date": bill_data.get("payment_due_date"),
+                "sent_date": value["sent_date"],
+                "amount": str(bill_data.get("total_amount_due")),
+                "currency": "PHP",
+                "status": "unpaid",
+                "source_email_id": value["message_id"],
+                "drive_file_id": drive_file_id,
+                "drive_file_name": value['outname'],
+                "category": value.get("category", "uncategorized"),
+            }
+            await run_blocking(db_insert_bill, record)
             await run_blocking(insert_or_update_last_run, {
                 "name": value["name"],
-                "success": False,
+                "success": True,
                 "duration_sec": (_now() - value["start_time"]).total_seconds()
             })
-            return
+            print(f"Extracted bill data: {bill_data}")
         
-        drive_file_id = await upload_pdf(dec_path, folders["subfolders"][value["name"]], f"{value['outname']}")
-
-        # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
-        record = {
-            "name": value["name"],
-            "due_date": bill_data.get("payment_due_date"),
-            "sent_date": value["sent_date"],
-            "amount": str(bill_data.get("total_amount_due")),
-            "currency": "PHP",
-            "status": "unpaid",
-            "source_email_id": value["message_id"],
-            "drive_file_id": drive_file_id,
-            "drive_file_name": value['outname'],
-            "category": value.get("category", "uncategorized"),
-        }
-        await run_blocking(db_insert_bill, record)
-        await run_blocking(insert_or_update_last_run, {
-            "name": value["name"],
-            "success": True,
-            "duration_sec": (_now() - value["start_time"]).total_seconds()
-        })
-        print(f"Extracted bill data: {bill_data}")
+        except Exception as e:
+            print(f"Error processing bill {value['bills_path']}: {e}")
+            
+        finally:
+            if dec_path is not None and dec_path.exists():
+                try:
+                    dec_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
 
 async def process_source(source: Dict[str, Any], folders: Dict[str, str], bill_sem: asyncio.Semaphore):
