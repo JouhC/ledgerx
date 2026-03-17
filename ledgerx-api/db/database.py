@@ -6,6 +6,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from core.config import settings
+from utils.password_crypto import encrypt_password
 
 
 def get_conn():
@@ -52,7 +53,7 @@ def db_init():
                     drive_folder_id TEXT,
                     file_pattern TEXT,
                     currency TEXT DEFAULT 'PHP',
-                    password_env TEXT,
+                    encrypted_password BYTEA,
                     category TEXT DEFAULT 'uncategorized',
                     useful_page INTEGER[] DEFAULT ARRAY[1],
                     active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -113,15 +114,17 @@ def db_init():
                     default_sources = json.load(f)
 
                 for item in default_sources:
+                    password = settings.model_extra[item['password_env']] if item['password_env'] != "None" else ""
+                    encrypted_password = encrypt_password(password) if password else None
                     cur.execute("""
                         INSERT INTO bill_sources (
                             name, provider, gmail_query, sender_email, subject_like,
                             include_kw, exclude_kw, drive_folder_id, file_pattern,
-                            currency, password_env, category, useful_page, active
+                            currency, encrypted_password, category, useful_page, active
                         ) VALUES (
                             %(name)s, %(provider)s, %(gmail_query)s, %(sender_email)s, %(subject_like)s,
                             %(include_kw)s, %(exclude_kw)s, %(drive_folder_id)s, %(file_pattern)s,
-                            %(currency)s, %(password_env)s, %(category)s, %(useful_page)s, TRUE
+                            %(currency)s, %(encrypted_password)s, %(category)s, %(useful_page)s, TRUE
                         )
                         ON CONFLICT (name) DO UPDATE SET
                             provider = EXCLUDED.provider,
@@ -133,7 +136,7 @@ def db_init():
                             drive_folder_id = EXCLUDED.drive_folder_id,
                             file_pattern = EXCLUDED.file_pattern,
                             currency = EXCLUDED.currency,
-                            password_env = EXCLUDED.password_env,
+                            encrypted_password = EXCLUDED.encrypted_password,
                             category = EXCLUDED.category,
                             useful_page = EXCLUDED.useful_page,
                             active = TRUE;
@@ -148,7 +151,7 @@ def db_init():
                         "drive_folder_id": item.get("drive_folder_id"),
                         "file_pattern": item.get("file_pattern"),
                         "currency": item.get("currency", "PHP"),
-                        "password_env": item.get("password_env"),
+                        "encrypted_password": encrypted_password,
                         "category": item.get("category", "uncategorized"),
                         "useful_page": item.get("useful_page", [1]),
                     })
@@ -278,7 +281,7 @@ def add_bill_source(item: dict):
                 INSERT INTO bill_sources (
                     name, provider, gmail_query, sender_email, subject_like,
                     include_kw, exclude_kw, drive_folder_id, file_pattern,
-                    currency, password_env, category, useful_page, active
+                    currency, encrypted_password, category, useful_page, active
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                 ON CONFLICT (name) DO NOTHING
@@ -293,7 +296,7 @@ def add_bill_source(item: dict):
                 item.get("drive_folder_id"),
                 item.get("file_pattern"),
                 item.get("currency", "PHP"),
-                item.get("password_env"),
+                item.get("encrypted_password"),
                 item.get("category", "uncategorized"),
                 item.get("useful_page", [1]),
             ))

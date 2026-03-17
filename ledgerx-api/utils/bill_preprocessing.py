@@ -9,6 +9,7 @@ from utils.field_extractor import run_extraction
 from utils.pattern_field_extractor import pattern_field_extraction
 from utils.deterministic_validator import deterministic_validator
 from utils.bill_utils import parse_date, parse_money
+from utils.password_crypto import decrypt_password
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import html
@@ -47,7 +48,7 @@ def decrypt_to_temp(value: Dict[str, Any]) -> str:
         raise FileNotFoundError(f"Input file not found: {src}")
 
     try:
-        open_kwargs = {"password": value.get('password')} if value.get('password') is not None else {}
+        open_kwargs = {"password": decrypt_password(value.get('encrypted_password'))} if value.get('encrypted_password') is not None else {}
 
         with pikepdf.open(str(src), **open_kwargs) as pdf:
             new_pdf = pikepdf.Pdf.new()

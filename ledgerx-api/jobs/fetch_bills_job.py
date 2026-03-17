@@ -80,7 +80,7 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
             "amount": str(bill_data.get("total_amount_due")),
             "currency": "PHP",
             "status": "unpaid",
-            "source_email_id": None,
+            "source_email_id": value["message_id"],
             "drive_file_id": drive_file_id,
             "drive_file_name": value['outname'],
             "category": value.get("category", "uncategorized"),
@@ -109,24 +109,25 @@ async def process_source(source: Dict[str, Any], folders: Dict[str, str], bill_s
                     print(f"Skipping source {source['name']} as it was fetched less than 1 day ago.")
                     return
 
-    password = settings.model_extra[source['password_env']] if source['password_env'] != "None" else ""
+    encrypted_password = source['encrypted_password']
 
     # fetch list of bills (blocking I/O), then fan out per bill
     bills_path = await run_blocking(extract_bills, source)
     print(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
 
     tasks = []
-    for idx, (sent_date, path, outname) in enumerate(bills_path, start=1):
+    for idx, (message_id, sent_date, path, outname) in enumerate(bills_path, start=1):
         value = {
             "name": source["name"],
             "sent_date": sent_date,
             "bills_path": path,
-            "password": password,
+            "encrypted_password": encrypted_password,
             "start_time": _now(),
             "label": f"{source['name']} {idx}",
             "category": source.get("category", "uncategorized"),
             "useful_page": source.get("useful_page", [1]),
-            "outname": outname
+            "outname": outname,
+            "message_id": message_id,
         }
         tasks.append(asyncio.create_task(process_single_bill(value, folders, bill_sem)))
 

@@ -59,9 +59,9 @@ async def create_folder_structure(folder_names: list[str]):
     }
 
 
-def upload_pdf(local_path: str, folder_id: str, filename: str) -> str:
-    svc = build_drive_service()
+async def upload_pdf(local_path: str, folder_id: str, filename: str) -> str:
+    svc = await asyncio.to_thread(build_drive_service)
     file_metadata = {"name": filename, "parents": [folder_id]}
     media = MediaFileUpload(local_path, mimetype="application/pdf", resumable=True)
-    f = svc.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    f = await asyncio.to_thread(svc.files().create, body=file_metadata, media_body=media, fields="id")
     return f["id"]
