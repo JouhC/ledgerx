@@ -196,7 +196,7 @@ def extract_bill_fields(
         pattern_output = pattern_field_extraction(pre_processed_text)
 
         final_output = deterministic_validator(slm_output, pattern_output, required_fields)
-        return final_output
+        return final_output, dec_path
 
     finally:
         if dec_path is not None and dec_path.exists():

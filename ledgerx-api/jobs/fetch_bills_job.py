@@ -59,18 +59,18 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
             print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
             return
 
-        bill_data = await extract_bill_fields_async(value, required_fields)
+        bill_data, dec_path = await extract_bill_fields_async(value, required_fields)
         if not bill_data:
             print(f"⚠️ No fields extracted for {value['bills_path']}")
             # still write a last_run with success=0 to avoid infinite retries spiking?
             await run_blocking(insert_or_update_last_run, {
                 "name": value["name"],
-                "success": 0,
+                "success": False,
                 "duration_sec": (_now() - value["start_time"]).total_seconds()
             })
             return
         
-        drive_file_id = await upload_pdf(value["bills_path"], folders["subfolders"][value["name"]], f"{value['outname']}")
+        drive_file_id = await upload_pdf(dec_path, folders["subfolders"][value["name"]], f"{value['outname']}")
 
         # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
         record = {
@@ -88,7 +88,7 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
         await run_blocking(db_insert_bill, record)
         await run_blocking(insert_or_update_last_run, {
             "name": value["name"],
-            "success": 1,
+            "success": True,
             "duration_sec": (_now() - value["start_time"]).total_seconds()
         })
         print(f"Extracted bill data: {bill_data}")
