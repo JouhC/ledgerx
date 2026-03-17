@@ -181,7 +181,7 @@ def db_insert_bill(item: dict):
                     paid_at, category, notes
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (name, due_date) DO NOTHING
+                ON CONFLICT (name, sent_date) DO NOTHING
             """, (
                 item.get("name"),
                 item.get("due_date"),
@@ -196,6 +196,16 @@ def db_insert_bill(item: dict):
                 item.get("category", "uncategorized"),
                 item.get("notes", ""),
             ))
+
+
+def update_bill_source_folder_id(source_id: int, folder_id: str):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE bill_sources
+                SET drive_folder_id = %s
+                WHERE id = %s
+            """, (folder_id, source_id))
 
 
 def db_all():

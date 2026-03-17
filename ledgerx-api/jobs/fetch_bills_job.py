@@ -1,5 +1,5 @@
 from integrations.gmail_service import extract_bills
-from db.sqlite3_db import get_bill_sources, insert_or_update_last_run, get_last_run, db_insert_bill, bill_exists
+from db.database import get_bill_sources, insert_or_update_last_run, get_last_run, db_insert_bill, bill_exists
 from jobs.gdrive_job import create_folder_structure, upload_pdf
 from utils.bill_preprocessing import extract_bill_fields
 from utils.field_extractor import load_model
@@ -139,9 +139,8 @@ async def run_fetch_all_async():
     try:
         sources = await asyncio.to_thread(get_bill_sources)
         bill_sem = asyncio.Semaphore(5)
-        subfolders = [source["name"] for source in sources]
 
-        folders = await create_folder_structure(subfolders)
+        folders = await create_folder_structure(sources)
 
         for source in sources:
             await process_source(source, folders, bill_sem)

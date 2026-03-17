@@ -5,7 +5,6 @@ from googleapiclient.discovery import build
 import base64
 import os
 import re
-from typing import Any
 from googleapiclient.errors import HttpError
 from datetime import datetime
 
@@ -87,6 +86,6 @@ def extract_bills(source):
             )
             out = download_attachment(service, m["id"], att_id, fname, outname)
             if out:
-                saved.append((sent_date, out, outname))
+                saved.append((m["id"], sent_date, out, outname))
 
     return saved
