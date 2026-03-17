@@ -4,7 +4,7 @@ from typing import Optional, List, Literal, Dict
 from core.config import settings
 from jobs.fetch_bills_job import run_fetch_all
 from datetime import datetime, timezone
-from db.database import db_all, db_mark_paid
+from db.sqlite3_db import db_all, db_mark_paid
 
 router = APIRouter(prefix=settings.API_PREFIX, tags=["bills"])
 

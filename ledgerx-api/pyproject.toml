@@ -17,6 +17,7 @@ dependencies = [
     "pandas>=2.3.3",
     "pdf2image>=1.17.0",
     "pikepdf>=9.11.0",
+    "psycopg[binary]>=3.3.3",
     "pydantic>=2.11.9",
     "pydantic-settings>=2.11.0",
     "pymupdf>=1.26.4",

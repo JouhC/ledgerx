@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     TEMP_ATTACHED_DIR: Path
     DEFAULT_SOURCES_PATH: Path
 
+    DATABASE_URL: str
+
     API_PREFIX: str = "/api/v1"
 
     REQUIRED_FIELDS: list[str] = ["customer_number", "statement_date", "credit_limit", "total_amount_due", "minimum_amount_due", "payment_due_date"] 

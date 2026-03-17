@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, EmailStr
 from typing import Literal, Optional
 from core.config import settings
-from db.database import add_bill_source
+from db.sqlite3_db import add_bill_source
 
 class BillSourcePayload(BaseModel):
     name: str = Field(..., description="The name of the bill source, e.g. 'Meralco'.")
