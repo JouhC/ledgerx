@@ -1,5 +1,6 @@
 from integrations.gmail_service import extract_bills
 from db.sqlite3_db import get_bill_sources, insert_or_update_last_run, get_last_run, db_insert_bill, bill_exists
+from jobs.gdrive_job import create_folder_structure, upload_pdf
 from utils.bill_preprocessing import extract_bill_fields
 from utils.field_extractor import load_model
 from core.config import settings
@@ -15,8 +16,10 @@ from services.progress import PROGRESS
 def _now():
     return datetime.now()
 
+
 async def run_blocking(fn, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
+
 
 def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
     def deco(fn):
@@ -42,12 +45,13 @@ LANG = "eng"
 tokenizer, model = load_model()
 required_fields = settings.REQUIRED_FIELDS
 
+
 @retry()
 async def extract_bill_fields_async(value: Dict[str, Any], required_fields: List[str]) -> Optional[Dict[str, Any]]:
     # wrap the blocking/CPU work (OCR/regex/PDF) off the event loop
     return await run_blocking(extract_bill_fields, value, required_fields, model=model, tokenizer=tokenizer)
 
-async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore, required_fields: List[str] = settings.REQUIRED_FIELDS):
+async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], sem: asyncio.Semaphore, required_fields: List[str] = settings.REQUIRED_FIELDS):
     async with sem:
         # quick existence check first to avoid wasted OCR
         exists = await run_blocking(bill_exists, value)
@@ -65,6 +69,8 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore, req
                 "duration_sec": (_now() - value["start_time"]).total_seconds()
             })
             return
+        
+        drive_file_id = await upload_pdf(value["bills_path"], folders["subfolders"][value["name"]], f"{value['outname']}")
 
         # make insert idempotent at the DB layer too (unique constraint on (name, sent_date, amount) and use UPSERT)
         record = {
@@ -75,8 +81,8 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore, req
             "currency": "PHP",
             "status": "unpaid",
             "source_email_id": None,
-            "drive_file_id": None,
-            "drive_file_name": value["bills_path"],
+            "drive_file_id": drive_file_id,
+            "drive_file_name": value['outname'],
             "category": value.get("category", "uncategorized"),
         }
         await run_blocking(db_insert_bill, record)
@@ -87,7 +93,8 @@ async def process_single_bill(value: Dict[str, Any], sem: asyncio.Semaphore, req
         })
         print(f"Extracted bill data: {bill_data}")
 
-async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
+
+async def process_source(source: Dict[str, Any], folders: Dict[str, str], bill_sem: asyncio.Semaphore):
     # 1-day skip
     last_run = await run_blocking(get_last_run, source["name"])
     if last_run:
@@ -105,11 +112,11 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
     password = settings.model_extra[source['password_env']] if source['password_env'] != "None" else ""
 
     # fetch list of bills (blocking I/O), then fan out per bill
-    bills_path: List[Tuple[str, str]] = await run_blocking(extract_bills, source)
+    bills_path = await run_blocking(extract_bills, source)
     print(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
 
     tasks = []
-    for idx, (sent_date, path) in enumerate(bills_path, start=1):
+    for idx, (sent_date, path, outname) in enumerate(bills_path, start=1):
         value = {
             "name": source["name"],
             "sent_date": sent_date,
@@ -118,9 +125,10 @@ async def process_source(source: Dict[str, Any], bill_sem: asyncio.Semaphore):
             "start_time": _now(),
             "label": f"{source['name']} {idx}",
             "category": source.get("category", "uncategorized"),
-            "useful_page": source.get("useful_page", [1])
+            "useful_page": source.get("useful_page", [1]),
+            "outname": outname
         }
-        tasks.append(asyncio.create_task(process_single_bill(value, bill_sem)))
+        tasks.append(asyncio.create_task(process_single_bill(value, folders, bill_sem)))
 
     if tasks:
         await asyncio.gather(*tasks)
@@ -130,17 +138,23 @@ async def run_fetch_all_async():
     try:
         sources = await asyncio.to_thread(get_bill_sources)
         bill_sem = asyncio.Semaphore(5)
+        subfolders = [source["name"] for source in sources]
+
+        folders = await create_folder_structure(subfolders)
 
         for source in sources:
-            await process_source(source, bill_sem)
+            await process_source(source, folders, bill_sem)
+
 
     except Exception as e:
         print(f"Error in run_fetch_all_async: {e}")
         raise
 
+
 # convenience sync entrypoint
 def run_fetch_all():
     asyncio.run(run_fetch_all_async())
+
 
 if __name__ == "__main__":
     run_fetch_all()

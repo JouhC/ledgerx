@@ -19,9 +19,9 @@ def build_drive_service() -> Any:
             raise Exception("No valid credentials available. Please set CREDENTIALS_DESKTOP_TOKEN in your .env file.")
     return build("drive", "v3", credentials=creds)
 
-def upload_pdf(local_path: str, folder_id: str, filename: str) -> str:
+
+def list_files_in_folder(folder_id: str) -> list[dict]:
     svc = build_drive_service()
-    file_metadata = {"name": filename, "parents": [folder_id]}
-    media = MediaFileUpload(local_path, mimetype="application/pdf", resumable=True)
-    f = svc.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    return f["id"]
+    query = f"'{folder_id}' in parents and trashed=false"
+    results = svc.files().list(q=query, fields="files(id, name)").execute()
+    return results.get("files", [])

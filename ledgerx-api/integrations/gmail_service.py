@@ -87,6 +87,6 @@ def extract_bills(source):
             )
             out = download_attachment(service, m["id"], att_id, fname, outname)
             if out:
-                saved.append((sent_date, out))
+                saved.append((sent_date, out, outname))
 
     return saved
