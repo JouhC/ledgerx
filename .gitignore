@@ -218,3 +218,11 @@ __marimo__/
 __pycache__/
 
 .env*
+
+!*/dist
+!package-lock.json
+!package.json
+!tsconfig.json
+
+
+*/node_modules/*
