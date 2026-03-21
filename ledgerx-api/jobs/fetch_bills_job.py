@@ -2,7 +2,6 @@ from integrations.gmail_service import extract_bills
 from db.database import get_bill_sources, insert_or_update_last_run, get_last_run, db_insert_bill, bill_exists
 from jobs.gdrive_job import create_folder_structure, upload_pdf
 from utils.bill_preprocessing import extract_bill_fields
-from utils.field_extractor import load_model
 from core.config import settings
 from datetime import datetime, timedelta
 
@@ -44,6 +43,7 @@ CONCURRENCY_PER_SOURCE = 2 # if sources fetch from network/drive
 LANG = "eng"
 
 if settings.SLM_MODEL:
+    from utils.field_extractor import load_model
     tokenizer, model = load_model()
 else:
     tokenizer, model = None, None
