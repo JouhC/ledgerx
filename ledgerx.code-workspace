@@ -7,6 +7,9 @@
 			"path": "ledgerx-web"
 		},
 		{
+			"path": "ledgerx-web-typescript"
+		},
+		{
 			"path": "."
 		}
 	],
