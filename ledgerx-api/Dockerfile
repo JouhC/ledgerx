@@ -7,26 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 
-# ---- Dependency resolution layer (cacheable) ----
-FROM base AS deps
-# Only copy files that affect deps to maximize cache hits
-COPY pyproject.toml uv.lock* ./
-# Create venv with production deps only
+# Copy the entire project code into the container
+COPY . /app
+
+# Install dependencies with uv
 RUN uv sync --frozen --no-dev
-
-# ---- Runtime image ----
-FROM base AS runtime
-# Non-root user
-RUN useradd -m -u 10001 appuser
-WORKDIR /app
-
-# Bring in the virtualenv from deps stage
-COPY --from=deps /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:${PATH}" \
-    PYTHONPATH="/app"
-
-# Copy the application code last (better layer caching)
-COPY . .
 
 # Optional: if you keep .env for local dev only, don't bake secrets into image
 # Ensure you have a .dockerignore that excludes .env, .venv, notebooks, etc.

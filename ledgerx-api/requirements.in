@@ -1,7 +1,10 @@
-docling
 pydantic-settings
 fastapi
 uvicorn
 google-api-python-client
 google-auth-oauthlib
 psycopg[binary]
+pymupdf
+pytesseract
+pillow
+pikepdf

@@ -1,25 +1,17 @@
 from __future__ import annotations
-from docling.datamodel.base_models import InputFormat
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import (
-    PdfPipelineOptions,
-    TesseractCliOcrOptions,
-)
-from utils.field_extractor import run_extraction
-from utils.pattern_field_extractor import pattern_field_extraction
-from utils.deterministic_validator import deterministic_validator
-from utils.bill_utils import parse_date, parse_money
-from utils.password_crypto import decrypt_password
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from typing import Optional
+from utils.bill_utils import parse_date, parse_money
+from utils.deterministic_validator import deterministic_validator
+from utils.field_extractor import run_extraction
+from utils.password_crypto import decrypt_password
+from utils.pattern_field_extractor import pattern_field_extraction
+from utils.pdf_extract_text import get_text_from_pdf
 import html
 import pikepdf
 import re
 import tempfile
-from pathlib import Path
-from typing import Optional, Sequence
-import tempfile
-import pikepdf
 
 
 # -------------------------------
@@ -95,32 +87,6 @@ def decrypt_to_temp(value: Dict[str, Any]) -> str:
         raise ValueError("PDF is encrypted and the provided password is incorrect.")
 
 
-def get_text_from_pdf(pdf_path: str, lang: str = "eng") -> str:
-    """
-    Extract text from a PDF using Docling + Tesseract OCR when needed.
-    """
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_ocr = True
-    pipeline_options.do_table_structure = False
-
-    ocr_options = TesseractCliOcrOptions(
-        lang=[lang],
-        force_full_page_ocr=True,
-    )
-
-    pipeline_options.ocr_options = ocr_options
-
-    converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(
-                pipeline_options=pipeline_options,
-            )
-        }
-    )
-
-    result = converter.convert(pdf_path)
-    return result.document.export_to_markdown()
-
 def preprocess_statement_text(raw_text: str) -> str:
     text = raw_text or ""
 
@@ -191,6 +157,11 @@ def extract_bill_fields(
 
 
         pattern_output = pattern_field_extraction(pre_processed_text)
+
+        if all(v is None for v in pattern_output.values()):
+            text = get_text_from_pdf(str(dec_path), lang=lang, fallback=True)
+            pre_processed_text = preprocess_statement_text(text)
+            pattern_output = pattern_field_extraction(pre_processed_text)
         
         if tokenizer is not None and model is not None:
             slm_output = _wrapper_field_extraction(
