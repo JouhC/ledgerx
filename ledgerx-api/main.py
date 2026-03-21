@@ -2,6 +2,7 @@ import logging
 from fastapi import FastAPI
 from routers import health, bills
 from fastapi.middleware.cors import CORSMiddleware
+from core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("request_logger")
@@ -11,13 +12,10 @@ app = FastAPI(
     description="API for bills",
     version="1.0.0")
 
-origins = [
-    "http://localhost:5173",
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

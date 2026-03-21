@@ -29,7 +29,9 @@ class Settings(BaseSettings):
 
     API_PREFIX: str = "/api/v1"
 
-    REQUIRED_FIELDS: list[str] = ["customer_number", "statement_date", "credit_limit", "total_amount_due", "minimum_amount_due", "payment_due_date"] 
+    REQUIRED_FIELDS: list[str] = ["customer_number", "statement_date", "credit_limit", "total_amount_due", "minimum_amount_due", "payment_due_date"]
+
+    ORIGINS: list[str] = ['http://localhost:5173'] 
 
     # --- computed helpers ---
     @property
