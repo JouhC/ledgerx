@@ -11,7 +11,7 @@ WORKDIR /app
 COPY . /app
 
 # Install dependencies with uv
-RUN uv sync --frozen --no-dev
+RUN uv pip install -r requirements.txt
 
 # Optional: if you keep .env for local dev only, don't bake secrets into image
 # Ensure you have a .dockerignore that excludes .env, .venv, notebooks, etc.
