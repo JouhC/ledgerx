@@ -4,7 +4,7 @@ import string
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image, ImageFilter, ImageOps
-from pymupdf import page as Page
+import pymupdf
 
 def preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
     img = image.convert("L")  # grayscale
@@ -75,7 +75,7 @@ def normalize_whitespace(text: str) -> str:
 
 
 def run_ocr(
-    page: Page,
+    page,
     ocr_lang: str = "eng",
     ocr_psm: int = 4,
     dpi: int = 200,
