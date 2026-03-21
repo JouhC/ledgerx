@@ -42,7 +42,11 @@ def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
 CONCURRENCY_PER_BILL = 4   # tune: start with 4-8 for mixed IO/CPU
 CONCURRENCY_PER_SOURCE = 2 # if sources fetch from network/drive
 LANG = "eng"
-tokenizer, model = load_model()
+
+if settings.SLM_MODEL:
+    tokenizer, model = load_model()
+else:
+    tokenizer, model = None, None
 required_fields = settings.REQUIRED_FIELDS
 
 

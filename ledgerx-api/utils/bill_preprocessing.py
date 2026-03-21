@@ -90,9 +90,10 @@ def decrypt_to_temp(value: Dict[str, Any]) -> str:
             return str(tmp_path)
 
     except pikepdf.PasswordError:
-        if value.get('password') is None:
+        if value.get('encrypted_password') is None:
             raise ValueError("PDF is encrypted — provide the correct password to decrypt.")
         raise ValueError("PDF is encrypted and the provided password is incorrect.")
+
 
 def get_text_from_pdf(pdf_path: str, lang: str = "eng") -> str:
     """
@@ -188,15 +189,20 @@ def extract_bill_fields(
         if debug:
             print(pre_processed_text)
 
-        slm_output = _wrapper_field_extraction(
-            pre_processed_text,
-            tokenizer=tokenizer,
-            model=model
-        )
-        pattern_output = pattern_field_extraction(pre_processed_text)
 
-        final_output = deterministic_validator(slm_output, pattern_output, required_fields)
-        return final_output, dec_path
+        pattern_output = pattern_field_extraction(pre_processed_text)
+        
+        if tokenizer is not None and model is not None:
+            slm_output = _wrapper_field_extraction(
+                pre_processed_text,
+                tokenizer=tokenizer,
+                model=model
+            )
+
+            final_output = deterministic_validator(slm_output, pattern_output, required_fields)
+            return final_output, dec_path
+        
+        return pattern_output, dec_path
     
     except Exception as e:
         print(f"Error in extract_bill_fields: {e}")

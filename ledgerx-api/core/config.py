@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     DB_PATH: Path
     TEMP_ATTACHED_DIR: Path
     DEFAULT_SOURCES_PATH: Path
+    SLM_MODEL: bool
 
     DATABASE_URL: str
 

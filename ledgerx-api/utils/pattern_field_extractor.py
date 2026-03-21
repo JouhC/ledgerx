@@ -25,19 +25,52 @@ DATE_ANY  = rf"(?:{DATE_LONG}|{DATE_DMY})"
 
 DATE_FORMATS = ("%B %d, %Y", "%b %d, %Y", "%d %b %Y", "%d-%b-%Y", "%B %d %Y", "%b %d %Y")
 
+AMOUNT = r"(?:PHP\s*)?([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})|[0-9]+\.\d{2})"
+DATE = r"([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4})"
+
 PATTERNS = {
     "total_balance": [
-        r"(?i)total\s+account\s+balance\s+([\d,]+\.\d{2})",
-        r"TOTAL AMOUNT DUE[\sA-Z]*([0-9][0-9,]*\.\d{2})"],
+        rf"(?is)\btotal\s+account\s+balance\b\s*:?\s*{AMOUNT}",
+        rf"(?is)\btotal\s+amount\s+due\b\s*:?\s*{AMOUNT}",
+        rf"(?is)\btotal\s+amount\s+due\b[^\S\r\n]*[\r\n]+[^\S\r\n]*(?:PHP\s*)?{AMOUNT[13:-1]}",
+    ],
+
     "due_date": [
-        r"(?i)(?:payment\s+)?due\s+date\s+(\d{1,2}\s+\w+\s+\d{4})",
-        r"PAYMENT\s+DUE\s+DATE\b[^\n\r]*[\r\n]+([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4})"],
+        rf"(?is)\b(?:payment\s+)?due\s+date\b\s*:?\s*{DATE}",
+        rf"(?is)\bpayment\s+due\s+date\b[^\S\r\n]*[\r\n]+[^\S\r\n]*{DATE}",
+        rf"(?is)\bdue\s+date\b[^\S\r\n]*[\r\n]+[^\S\r\n]*{DATE}",
+    ],
+
     "min_payment": [
-        r"(?i)minimum\s+payment\s+([\d,]+\.\d{2})",
-        r"MINIMUM AMOUNT DUE[\sA-Z]*([0-9][0-9,]*\.\d{2})"],
+        rf"(?is)\bminimum\s+payment\b\s*:?\s*{AMOUNT}",
+        rf"(?is)\bminimum\s+amount\s+due\b\s*:?\s*{AMOUNT}",
+        rf"(?is)\bminimum\s+amount\s+due\b[^\S\r\n]*[\r\n]+[^\S\r\n]*(?:PHP\s*)?{AMOUNT[13:-1]}",
+    ],
+
     "credit_limit": [
         r"CREDIT\s+LIMIT[\s\S]{0,50}?(?:PHP\s*)?([\d,]+\.\d{2})",
+        rf"(?is)\bcredit\s+limit\b\s*:?\s*{AMOUNT}",
+        rf"(?is)\bcredit\s+limit\b[^\S\r\n]*[\r\n]+[^\S\r\n]*(?:PHP\s*)?{AMOUNT[13:-1]}",
     ],
+
+    "statement_date": [
+        rf"(?is)\bstatement\s+date\b\s*:?\s*{DATE}",
+        rf"(?is)\bstatement\s+date\b[^\S\r\n]*[\r\n]+[^\S\r\n]*{DATE}",
+        rf"(?is)\bcut[\s-]?off\s+date\b\s*:?\s*{DATE}",
+        rf"(?is)\bstatement\s+from\b[^\n]*?\bto\b\s*({DATE})",
+    ],
+
+    "customer_number": [
+        rf"(?is)\bcustomer\s+number\b\s*:?\s*{CUSTOMER_NO}",
+        rf"(?is)\bcustomer\s+no\.?\b\s*:?\s*{CUSTOMER_NO}",
+        rf"(?is)\baccount\s+number\b\s*:?\s*{CUSTOMER_NO}",
+        rf"(?is)\bcard\s+number\b\s*:?\s*{CUSTOMER_NO}",
+        
+        # masked card fallback
+        r"(?i)\b([0-9]{4}[-\s](?:[X\*]{4}|[0-9]{4})[-\s](?:[X\*]{4}|[0-9]{4})[-\s][0-9]{4})\b",
+
+        rf"(?is)\bcustomer\s+number\b[^\S\r\n]*[\r\n]+[^\S\r\n]*{CUSTOMER_NO}",
+    ]
 }
 
 # 2) NEW: Markdown-like table row matcher for the data row (4 cells).
@@ -51,6 +84,39 @@ TABLE_ROW = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE | re.MULTILINE,
 )
+
+
+def mask_card_number(card: str) -> str:
+    """
+    Masks a card number while preserving format (dashes/spaces).
+    Keeps first 4 and last 4 digits visible.
+    """
+    if not card:
+        return card
+
+    # Extract digits only
+    digits = re.sub(r"\D", "", card)
+
+    # If too short, don't mask (avoid breaking IDs)
+    if len(digits) < 12:
+        return card
+
+    # Mask middle digits
+    masked_digits = digits[:4] + "X" * (len(digits) - 8) + digits[-4:]
+
+    # Rebuild original format (preserve separators)
+    result = []
+    digit_idx = 0
+
+    for ch in card:
+        if ch.isdigit():
+            result.append(masked_digits[digit_idx])
+            digit_idx += 1
+        else:
+            result.append(ch)
+
+    return "".join(result)
+
 
 def parse_date_safe(s: str) -> Optional[datetime]:
     s = re.sub(r"\s+", " ", s.strip().replace("Sept", "Sep"))
@@ -164,18 +230,20 @@ def extract_fields(text: str) -> dict:
         for pattern in patterns:
             m = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
             if m:
-                value = m.group(1)
+                if m.lastindex:
+                    value = m.group(1)
+                else:
+                    value = m.group(0)
                 break  # stop at first valid match
         b[key] = value
         if value is None:
             none_count += 1
-
     
     required_fields = ["total_balance", "due_date", "min_payment"]
     
     if all(b[f] is not None for f in required_fields):
         return {
-            "customer_number": None,  # not present in this layout
+            "customer_number": mask_card_number(b.get("customer_number", None)),
             "statement_date": parse_date(b["statement_date"]) if b.get("statement_date") else None,
             "credit_limit": parse_money(b["credit_limit"]) if b.get("credit_limit") else None,
             "total_amount_due": parse_money(b["total_balance"]),
@@ -204,7 +272,7 @@ def extract_fields(text: str) -> dict:
         m["total_amount_due"] = parse_money(m.get("total_amount_due"))
         m["minimum_amount_due"] = parse_money(m.get("minimum_amount_due"))
         m["payment_due_date"] = parse_date(m["payment_due_date"])
-        m["statement_date"] = parse_date(b["statement_date"]) if b.get("statement_date") else None
+        m["statement_date"] = parse_date(m["statement_date"]) if m.get("statement_date") else None
         return m
 
     print("Could not match either strict sequence or table-row layout. Inspect OCR text and adjust patterns.")
