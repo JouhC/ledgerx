@@ -543,7 +543,15 @@ const toggleTheme = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="month" />
                         <YAxis />
-                        <Tooltip formatter={(v: number) => peso(v)} />
+                        <Tooltip
+                          formatter={(value) => {
+                            if (typeof value === "number") return peso(value);
+                            if (typeof value === "string" && !Number.isNaN(Number(value))) {
+                              return peso(Number(value));
+                            }
+                            return value ?? "";
+                          }}
+                        />
                         <Legend />
                         <Bar dataKey="credit_cards" name="Credit Cards" />
                         <Bar dataKey="utilities" name="Utilities" />
@@ -556,7 +564,15 @@ const toggleTheme = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="month" />
                         <YAxis />
-                        <Tooltip formatter={(v: number) => peso(v)} />
+                        <Tooltip
+                          formatter={(value) => {
+                            if (typeof value === "number") return peso(value);
+                            if (typeof value === "string" && !Number.isNaN(Number(value))) {
+                              return peso(Number(value));
+                            }
+                            return value ?? "";
+                          }}
+                        />
                         <Legend />
                         <Line type="monotone" dataKey="total" name="Total" strokeWidth={2} />
                       </LineChart>
