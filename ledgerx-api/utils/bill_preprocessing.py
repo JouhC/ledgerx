@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from typing import Optional
 from utils.bill_utils import parse_date, parse_money
 from utils.deterministic_validator import deterministic_validator
-from utils.field_extractor import run_extraction
 from utils.password_crypto import decrypt_password
 from utils.pattern_field_extractor import pattern_field_extraction
 from utils.pdf_extract_text import get_text_from_pdf
@@ -12,7 +11,6 @@ import html
 import pikepdf
 import re
 import tempfile
-
 
 # -------------------------------
 # Helpers: decrypt + preprocessing
@@ -115,8 +113,7 @@ def preprocess_statement_text(raw_text: str) -> str:
     return text.strip()
 
 
-def _wrapper_field_extraction(ocr_text: str, tokenizer: Any, model: Any) -> Dict[str, Optional[str]]:
-    out = run_extraction(ocr_text, tokenizer=tokenizer, model=model)
+def _wrapper_field_extraction(out) -> Dict[str, Optional[str]]:
     validated = out.get("validated", None)
     if not validated:
         raise ValueError("Extraction failed validation checks. Output may be unreliable.")
@@ -164,11 +161,10 @@ def extract_bill_fields(
             pattern_output = pattern_field_extraction(pre_processed_text)
         
         if tokenizer is not None and model is not None:
-            slm_output = _wrapper_field_extraction(
-                pre_processed_text,
-                tokenizer=tokenizer,
-                model=model
-            )
+            from utils.field_extractor import run_extraction
+            
+            out = run_extraction(pre_processed_text, tokenizer=tokenizer, model=model)
+            slm_output = _wrapper_field_extraction(out)
 
             final_output = deterministic_validator(slm_output, pattern_output, required_fields)
             return final_output, dec_path
