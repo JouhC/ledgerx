@@ -1,0 +1,60 @@
+name: Cron Job for Backup and Automation
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 10:00 AM PHT
+  workflow_dispatch:
+
+jobs:
+  run-api-requests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Health Check - Wait for API Service to Start
+      env:
+        API_URL: ${{ secrets.API_URL }}
+      run: |
+        echo "Checking API health..."
+        MAX_RETRIES=24  # 2 minutes (24 * 5 seconds)
+        RETRY_DELAY=5
+
+        for ((i=1; i<=MAX_RETRIES; i++)); do
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
+
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ API is up and running."
+            break
+          fi
+
+          echo "Waiting for API... (Attempt $i/$MAX_RETRIES)"
+          sleep $RETRY_DELAY
+
+          if [ "$i" -eq "$MAX_RETRIES" ]; then
+            echo "❌ API did not start in time."
+            exit 1
+          fi
+        done
+
+    - name: Run Fetch Bills (Blocking)
+      env:
+        API_URL: ${{ secrets.API_URL }}
+      run: |
+        echo "🚀 Triggering fetch_bills..."
+
+        RESPONSE=$(curl -s --max-time 600 -w "\nHTTP_STATUS:%{http_code}" "$API_URL/fetch_bills")
+
+        BODY=$(echo "$RESPONSE" | sed -n '1,/HTTP_STATUS:/p' | sed '$d')
+        STATUS=$(echo "$RESPONSE" | grep HTTP_STATUS | cut -d: -f2)
+
+        echo "Response:"
+        echo "$BODY"
+
+        if [ "$STATUS" -ne 200 ]; then
+          echo "❌ API call failed with status $STATUS"
+          exit 1
+        fi
+
+        echo "✅ Fetch completed successfully"

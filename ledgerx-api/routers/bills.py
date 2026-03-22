@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List, Literal, Dict
+from typing import Optional
 from core.config import settings
-from jobs.fetch_bills_job import run_fetch_all
+from jobs.fetch_bills_job import run_fetch_all_async
 from datetime import datetime, timezone
 from db.database import db_all, db_mark_paid
 
@@ -23,22 +23,18 @@ class PayResult(BaseModel):
     bill_id: str
     status: str
 
+
 @router.get("/fetch_bills")
-def fetch_bills():
+async def fetch_bills():
     try:
-        run_fetch_all()
-        response = {
+        await run_fetch_all_async()
+        return {
             "status": "Success",
             "message": "Successfully fetched bills!"
         }
     except Exception as e:
-        response = {
-            "status": "Failed",
-            "message": e
-        }
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        return response
+
 
 @router.get("/get_bills")
 def get_bills():
@@ -58,6 +54,7 @@ def get_bills():
     finally:
         return response
     
+
 @router.post("/{bill_id}/pay")
 def pay_bill(bill_id: str):
     try:

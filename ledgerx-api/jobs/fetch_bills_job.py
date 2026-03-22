@@ -164,7 +164,6 @@ async def run_fetch_all_async():
         for source in sources:
             await process_source(source, folders, bill_sem)
 
-
     except Exception as e:
         print(f"Error in run_fetch_all_async: {e}")
         raise
