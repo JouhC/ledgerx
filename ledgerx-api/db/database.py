@@ -160,6 +160,39 @@ def db_init():
                         "category": item.get("category", "uncategorized"),
                         "useful_page": item.get("useful_page", [1]),
                     })
+        
+        
+        cur.execute("""
+            CREATE TABLE bill_reminders (
+                id BIGSERIAL PRIMARY KEY,
+                bill_id BIGINT NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+                recipient_email TEXT NOT NULL,
+                reminder_type VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                subject TEXT,
+                body TEXT,
+                sent_at TIMESTAMP NULL,
+                attempt_count INT NOT NULL DEFAULT 0,
+                last_attempt_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                error_message TEXT NULL
+            );
+            
+            CREATE INDEX idx_bill_reminders_bill_id ON bill_reminders(bill_id);
+            CREATE INDEX idx_bill_reminders_status ON bill_reminders(status);
+            CREATE INDEX idx_bill_reminders_sent_at ON bill_reminders(sent_at);
+            CREATE INDEX idx_bill_reminders_type ON bill_reminders(reminder_type);
+        """)
+
+        cur.execute("""
+        ALTER TABLE bill_reminders
+        ADD COLUMN sent_date DATE;
+
+        CREATE UNIQUE INDEX uq_bill_reminder_once_per_day
+        ON bill_reminders (bill_id, reminder_type, sent_date)
+        WHERE status = 'sent';
+        """)
+        
 
 
 def bill_exists(item: dict) -> bool:

@@ -22,7 +22,7 @@ jobs:
         RETRY_DELAY=5
 
         for ((i=1; i<=MAX_RETRIES; i++)); do
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz" || echo "000")
 
           if [ "$RESPONSE" -eq 200 ]; then
             echo "✅ API is up and running."
