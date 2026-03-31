@@ -1,12 +1,13 @@
-import json
-from pathlib import Path
-
-import psycopg
-from psycopg.rows import dict_row
-
 from core.config import settings
-from utils.password_crypto import encrypt_password
+from pathlib import Path
+from psycopg.rows import dict_row
 from utils.bill_utils import get_ph_time
+from utils.password_crypto import encrypt_password
+import json
+import logging
+import psycopg
+
+logger = logging.getLogger(__name__)
 
 
 def get_conn():
@@ -300,11 +301,11 @@ def get_last_run(name: str):
             row = cur.fetchone()
 
             if row:
-                print("Latest run:")
-                print(row)
+                logger.info("Latest run:")
+                logger.info(row)
                 return row
             else:
-                print("No records found for:", name)
+                logger.info("No records found for:", name)
                 return None
 
 

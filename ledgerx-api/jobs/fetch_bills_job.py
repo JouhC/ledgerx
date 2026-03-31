@@ -7,8 +7,15 @@ from datetime import datetime, timedelta
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple, Optional
-from services.progress import PROGRESS
+from typing import Any, Dict, List, Optional
+
+from zoneinfo import ZoneInfo
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+MANILA_TZ = ZoneInfo("Asia/Manila")
 
 # ---- tiny helpers -----------------------------------------------------------
 
@@ -30,7 +37,7 @@ def retry(backoff=(0.5, 1.0, 2.0), exceptions=(Exception,)):
                 except exceptions as e:
                     last = e
                     if delay == float('inf'):
-                        print(f"Function {fn.__name__} failed after {i} attempts.")
+                        logger.info(f"Function {fn.__name__} failed after {i} attempts.")
                         raise
                     await asyncio.sleep(delay)
             raise last
@@ -56,17 +63,20 @@ async def extract_bill_fields_async(value: Dict[str, Any], required_fields: List
     return await run_blocking(extract_bill_fields, value, required_fields, model=model, tokenizer=tokenizer)
 
 async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], sem: asyncio.Semaphore, required_fields: List[str] = settings.REQUIRED_FIELDS):
+    dec_path = None
     async with sem:
         try:
             # quick existence check first to avoid wasted OCR
             exists = await run_blocking(bill_exists, value)
             if exists:
-                print(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
+                logger.info(f"Bill already exists in database: {value['name']} sent at {value['sent_date']}")
                 return
+            
+            logger.info(f"Processing bill for {value['name']} sent at {value['sent_date']} with path {value['bills_path']}")
 
             bill_data, dec_path = await extract_bill_fields_async(value, required_fields)
             if not bill_data:
-                print(f"⚠️ No fields extracted for {value['bills_path']}")
+                logger.info(f"⚠️ No fields extracted for {value['bills_path']}")
                 # still write a last_run with success=0 to avoid infinite retries spiking?
                 await run_blocking(insert_or_update_last_run, {
                     "name": value["name"],
@@ -100,10 +110,10 @@ async def process_single_bill(value: Dict[str, Any], folders: Dict[str, str], se
                 "success": True,
                 "duration_sec": (_now() - value["start_time"]).total_seconds()
             })
-            print(f"Extracted bill data: {bill_data}")
+            logger.info(f"Extracted bill data: {bill_data}")
         
         except Exception as e:
-            print(f"Error processing bill {value['bills_path']}: {e}")
+            logger.info(f"Error processing bill {value['bills_path']}: {e}")
 
         finally:
             if dec_path is not None and dec_path.exists():
@@ -117,22 +127,27 @@ async def process_source(source: Dict[str, Any], folders: Dict[str, str], bill_s
     # 1-day skip
     last_run = await run_blocking(get_last_run, source["name"])
     if last_run:
-        last_fetch_at = last_run[0]
-        if last_fetch_at:
-            try:
-                last_fetch = datetime.fromisoformat(str(last_fetch_at).rstrip("Z"))
-            except Exception:
-                print(f"Could not parse last_fetch_at for {source['name']}: {last_fetch_at}")
-            else:
-                if _now() - last_fetch < timedelta(days=1):
-                    print(f"Skipping source {source['name']} as it was fetched less than 1 day ago.")
-                    return
+        last_fetch_at = last_run.get("last_fetch_at")
+    else:
+        last_fetch_at = None
+        
+    if last_fetch_at:
+        # Ensure it's aware
+        if last_fetch_at.tzinfo is None:
+            last_fetch_at = last_fetch_at.replace(tzinfo=MANILA_TZ)
+        else:
+            # Convert from UTC → Manila
+            last_fetch_at = last_fetch_at.astimezone(MANILA_TZ)
+
+        if datetime.now(MANILA_TZ) - last_fetch_at < timedelta(days=1):
+            logger.info(f"Skipping source {source['name']} as it was fetched less than 1 day ago.")
+            return
 
     encrypted_password = source['encrypted_password']
 
     # fetch list of bills (blocking I/O), then fan out per bill
     bills_path = await run_blocking(extract_bills, source)
-    print(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
+    logger.info(f"Fetched {len(bills_path)} new bills for source {source['name']}.")
 
     tasks = []
     for idx, (message_id, sent_date, path, outname) in enumerate(bills_path, start=1):
@@ -165,7 +180,7 @@ async def run_fetch_all_async():
             await process_source(source, folders, bill_sem)
 
     except Exception as e:
-        print(f"Error in run_fetch_all_async: {e}")
+        logger.info(f"Error in run_fetch_all_async: {e}")
         raise
 
 

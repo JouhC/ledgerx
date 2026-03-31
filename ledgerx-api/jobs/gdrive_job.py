@@ -62,7 +62,7 @@ def get_or_create_folder_sync(svc, name: str, parent_id: str | None = None) -> s
 
     for attempt in range(1, DRIVE_MAX_RETRIES + 1):
         try:
-            logging.info(f"Attempt {attempt}: Searching for folder with query: {query}")
+            #logging.info(f"Attempt {attempt}: Searching for folder with query: {query}")
             results = svc.files().list(
                 q=query,
                 spaces="drive",
