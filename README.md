@@ -1,81 +1,55 @@
-## 🧾 LedgerX — Automated Bills Fetching & Processing API
+# LedgerX
 
-**LedgerX** is a lightweight automation system that fetches, processes, and organizes billing data from multiple sources — designed for reliability, simplicity, and easy deployment.
+LedgerX is a lightweight automation API for fetching, processing, and organizing billing data from multiple sources. It is designed around reliable scheduled execution, simple deployment, and structured outputs that can later feed analytics or dashboards.
 
-Built with **FastAPI + async processing**, it eliminates manual tracking by turning billing workflows into a single API call.
+## Features
 
----
+- Automated bill fetching across multiple sources.
+- Async processing pipeline with controlled concurrency.
+- Structured data extraction for storage or analysis.
+- API-first workflow triggered through a single endpoint.
+- Render-friendly deployment with scheduled GitHub Actions automation.
 
-## ⚡ Key Features
+## How It Works
 
-* 🔄 **Automated bill fetching** across multiple sources
-* ⚙️ **Async processing pipeline** with controlled concurrency
-* 🧠 **Structured data extraction** (ready for analytics / storage)
-* 🚀 **Deployable on Render** with cron-based automation
-* 🔌 **API-first design** for easy integration
+1. Trigger `/fetch_bills`.
+2. The service loads configured sources.
+3. Sources are processed with concurrency control.
+4. Outputs are organized into structured folders or data records.
+5. The API responds when processing completes.
 
----
+## Tech Stack
 
-## 🧠 How It Works
+- FastAPI
+- AsyncIO
+- Pandas
+- Docker
+- GitHub Actions
+- Render
 
-1. Trigger `/fetch_bills`
-2. System:
-
-   * Loads sources
-   * Processes each source sequentially with concurrency control
-   * Organizes outputs into structured folders/data
-3. Returns when all processing is complete
-
----
-
-## 🛠️ Tech Stack
-
-* **FastAPI** — backend API
-* **AsyncIO** — concurrency & task control
-* **Pandas** — data handling
-* **Docker** — containerized deployment
-* **GitHub Actions** — scheduled automation
-* **Render** — hosting
-
----
-
-## 🚀 Usage
-
-### Run locally
+## Run Locally
 
 ```bash
 uvicorn main:app --reload
 ```
 
-### Trigger automation
+Trigger automation:
 
 ```bash
 curl http://localhost:8000/fetch_bills
 ```
 
----
+## Automation
 
-## ⏱️ Automation
+LedgerX can run from GitHub Actions on a cron schedule, so billing workflows can execute daily without manual polling.
 
-Runs via GitHub Actions (cron):
+## Roadmap
 
-* Daily scheduled fetch
-* No polling required (blocking execution)
+- Task queue support with Redis or Celery.
+- Monitoring dashboard.
+- Smart classification with ML or LLMs.
+- Email or Slack notifications.
 
----
+## Portfolio Note
 
-## 🎯 Why LedgerX?
-
-* Removes manual bill tracking
-* Simple but scalable architecture
-* Works even on free-tier infrastructure
-* Easily extendable to analytics / dashboards / ML
-
----
-
-## 🔮 Future Improvements
-
-* Task queue (Redis / Celery) for distributed processing
-* Dashboard for monitoring
-* Smart classification (ML / LLM)
-* Notification system (email / Slack)
+LedgerX is featured in my portfolio as a practical FastAPI automation system that turns recurring operational work into a repeatable backend workflow.
